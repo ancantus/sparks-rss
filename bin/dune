@@ -1,0 +1,4 @@
+(executable
+ (public_name sparks_rss)
+ (name main)
+ (libraries sparks_rss))
