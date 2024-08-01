@@ -1,2 +1,3 @@
 (library
- (name sparks_rss))
+ (name sparks_rss)
+ (libraries rss ezcurl))

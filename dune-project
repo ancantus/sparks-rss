@@ -5,13 +5,13 @@
 (generate_opam_files true)
 
 (source
- (github username/reponame))
+ (github ancantus/sparks-rss))
 
-(authors "Author Name")
+(authors "Ryan Estep")
 
-(maintainers "Maintainer Name")
+(maintainers "Ryan Estep")
 
-(license LICENSE)
+(license MIT)
 
 (documentation https://url/to/documentation)
 
