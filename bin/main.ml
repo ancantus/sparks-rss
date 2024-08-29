@@ -15,7 +15,9 @@ let () =
     let parsed_links =
       Lwt_main.run (Sparks_rss.Webdriver.fetch_sources webdriver_port links)
     in
-    List.iter (fun n -> Soup.to_string n |> print_endline) parsed_links
+    List.iter
+      (fun n -> Sparks_rss.Spark.parse_fx_reader n |> print_endline)
+      parsed_links
   with Webdriver_cohttp_lwt_unix.Webdriver e ->
     Printf.fprintf stderr "[FAIL] Webdriver error: %s\n%!"
       (Webdriver_cohttp_lwt_unix.Error.to_string e) ;

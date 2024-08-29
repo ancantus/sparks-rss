@@ -38,20 +38,12 @@ let wait_for time = wait ~timeout:time (W.find_first `css "#NOT-A-VALID-CLASS")
 let action_fetch_source url =
   webdriver_fetch_source (wait_for 5000) (Uri.to_string url)
 
-let action_fetch_chain url =
-  let* reader_contents = action_fetch_reader url in
-  match reader_contents with
-  | Some c ->
-      return (Some c)
-  | None ->
-      action_fetch_source url
-
-let fetch_source port url =
+let fetch_source ?(action = action_fetch_reader) port url =
   let host = "http://127.0.0.1:" ^ Int.to_string port in
-  W.run ~host W.Capabilities.firefox_headless (action_fetch_chain url)
+  W.run ~host W.Capabilities.firefox_headless (action url)
 
-let fetch_sources port urls =
-  let actions = List.map (fun url -> action_fetch_chain url) urls in
+let fetch_sources ?(action = action_fetch_reader) port urls =
+  let actions = List.map (fun url -> action url) urls in
   let collapse_actions promised_sources cmd =
     map2
       (fun sources opt_src ->
