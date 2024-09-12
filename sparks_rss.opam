@@ -12,6 +12,9 @@ bug-reports: "https://github.com/ancantus/sparks-rss/issues"
 depends: [
   "ocaml"
   "dune" {>= "3.16"}
+  "lambdasoup"
+  "ezcurl"
+  "rss"
   "odoc" {with-doc}
 ]
 build: [

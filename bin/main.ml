@@ -6,7 +6,7 @@ let webdriver_port = 4444
 let () =
   let articles =
     Sparks_rss.Syndications.from_file
-      "/home/restep/projects/sparks_rss/resources/rss_short"
+      "/home/restep/projects/sparks-rss/resources/rss_short"
   in
   let links =
     List.map (fun (a : Sparks_rss.Syndications.article) -> a.link) articles
