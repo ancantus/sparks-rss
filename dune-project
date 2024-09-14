@@ -19,7 +19,7 @@
  (name sparks_rss)
  (synopsis "A short synopsis")
  (description "A longer description")
- (depends ocaml dune lambdasoup ezcurl rss)
+ (depends ocaml dune lambdasoup ezcurl rss tyxml)
  (tags
   (topics "to describe" your project)))
 

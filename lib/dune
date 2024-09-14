@@ -1,3 +1,4 @@
 (library
  (name sparks_rss)
- (libraries rss ezcurl webdriver_cohttp-lwt-unix lambdasoup))
+ (modules_without_implementation epub_types ocf_container_sig)
+ (libraries rss ezcurl webdriver_cohttp-lwt-unix lambdasoup tyxml))

@@ -1,8 +1,7 @@
-let webdriver_port = 4444
-
 (*let test_url =
   Uri.of_string "https://www.scrapingbee.com/blog/ocaml-web-scraping/"*)
-
+(*
+let webdriver_port = 4444
 let () =
   let articles =
     Sparks_rss.Syndications.from_file
@@ -23,3 +22,23 @@ let () =
       (Webdriver_cohttp_lwt_unix.Error.to_string e) ;
     Printexc.print_backtrace stderr ;
     Printf.fprintf stderr "\n%!"
+
+*)
+module M = Sparks_rss.Ocf_container_f.Make (Tyxml_xml)
+module P = Xml_print.Make_typed_fmt (Tyxml_xml) (M)
+
+let opf_path = "content.opf"
+
+let opf_mediatype = "application/oebps-package+xml"
+
+let () =
+  let container =
+    M.ocf_container
+      ~a:[M.a_version "1.0"]
+      (M.rootfiles
+         (M.rootfile ~a:[M.a_fullpath opf_path; M.a_mediatype opf_mediatype] ())
+         [] )
+      None
+  in
+  let s = Format.asprintf "%a" (P.pp ()) container in
+  print_endline s

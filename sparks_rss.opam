@@ -15,6 +15,7 @@ depends: [
   "lambdasoup"
   "ezcurl"
   "rss"
+  "tyxml"
   "odoc" {with-doc}
 ]
 build: [
