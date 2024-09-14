@@ -11,6 +11,15 @@ type path = string
 (** String type within the OCF doc *)
 type text = string
 
+(** Unique identifier within all OCF docs *)
+type id = string
+
+(** Base direction of textual content (under-supported) *)
+type dir = [`Ltr | `Rtl | `Auto]
+
+(** List of properties that has some defined vocabulary for each element *)
+type properites = string list
+
 (** All possible publication resources that do not require fallbacks as per EPUB3 specification *)
 type coretypes =
   [ (* Image types *)
@@ -38,6 +47,7 @@ type coretypes =
   | `Ncx
   | `Smil ]
 
+(****** OCF Container ******)
 type ocf_container = [`Ocf_Container]
 
 type ocf_container_attrib = [`Version]
@@ -53,3 +63,6 @@ type links = [`Links]
 type link = [`Link]
 
 type link_attrib = [`Href | `Mediatype | `Relationship]
+
+(****** OCF Package *******)
+type ocf_package = [`Ocf_Package]

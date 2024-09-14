@@ -1,24 +1,20 @@
 module type T = sig
   open Epub_types
 
-  (** An element for the container.xml *)
-  type +'a elt
-
-  (** An XML attribute *)
-  type +'a attrib
+  (** Utility functionality required for most bespoke OCF files *)
+  include Ocf_xml_sig.T
 
   (** Complete OCF container document *)
   type doc = ocf_container elt
 
-  module Xml : Xml_sigs.T
+  (** XML meta information: doctype, and the like *)
+  module Info : Xml_sigs.Info
 
-  (** wrapper for the basic XML type *)
-  type 'a wrap = 'a Xml.W.t
+  val doc_toelt : doc -> Xml.elt
+  (** Binding to outisde XML lib to render entire document *)
 
-  (** wrapper for a list of XML types *)
-  type 'a wrap_list = 'a Xml.W.tlist
+  (******* Attributes *******)
 
-  (** Attributes *)
   val a_fullpath : text wrap -> [> `Path] attrib
   (** Path to the rootfile *)
 
@@ -28,20 +24,7 @@ module type T = sig
   val a_version : text wrap -> [> `Version] attrib
   (** Version of the OCF container *)
 
-  (** Helper functions for constructing XML elements *)
-
-  (** XML element with no children *)
-  type ('a, 'b) e_empty = ?a:'a attrib list -> unit -> 'b elt
-
-  (** XML element with a single child *)
-  type ('a, 'b, 'c) e_single = ?a:'a attrib list -> 'b elt wrap -> 'c elt
-
-  (** XML element with a list of children (0 or more) *)
-  type ('a, 'b, 'c) e_list = ?a:'a attrib list -> 'b elt wrap_list -> 'c elt
-
-  (** XML element with a list of children where at least one is required *)
-  type ('a, 'b, 'c) e_req_list =
-    ?a:'a attrib list -> 'b elt wrap -> 'b elt wrap_list -> 'c elt
+  (******* Elements *******)
 
   val ocf_container :
        ?a:ocf_container_attrib attrib list
@@ -62,13 +45,6 @@ module type T = sig
 
   val link : ([< link_attrib], [> link]) e_empty
   (** Link to a resource to process the OCF container *)
-
-  (** XML meta information: doctype, and the like *)
-  module Info : Xml_sigs.Info
-
-  val doc_toelt : doc -> Xml.elt
-
-  val toelt : 'a elt -> Xml.elt
 end
 
 module Make (Xml : Xml_sigs.T) : sig
