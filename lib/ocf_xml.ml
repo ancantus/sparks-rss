@@ -13,6 +13,20 @@ module Make (Xml : Xml_sigs.T) = struct
   (* internal building blocks *)
   let a_string = Xml.string_attrib
 
+  let a_string_list label items =
+    let rec space_sep_string acc items =
+      match items with
+      | [] ->
+          acc
+      | head :: [] ->
+          acc ^ head
+      | head :: tail ->
+          space_sep_string (acc ^ head) tail
+    in
+    a_string label (space_sep_string "" items |> Xml.W.return)
+
+  let txt = Xml.pcdata
+
   type ('a, 'b) e_empty = ?a:'a attrib list -> unit -> 'b elt
 
   type ('a, 'b, 'c) e_single = ?a:'a attrib list -> 'b elt wrap -> 'c elt

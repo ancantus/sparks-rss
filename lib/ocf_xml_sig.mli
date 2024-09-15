@@ -1,4 +1,6 @@
 module type T = sig
+  open Epub_types
+
   (** An XML element *)
   type +'a elt
 
@@ -33,4 +35,9 @@ module type T = sig
 
   val toelt : 'a elt -> Xml.elt
   (** Hook to XML parsing / printing function for element wise operations *)
+
+  (****** Elements ******)
+
+  val txt : string wrap -> [ | txt] elt
+  (** XML basic text element *)
 end

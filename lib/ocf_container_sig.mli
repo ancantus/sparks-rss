@@ -7,21 +7,18 @@ module type T = sig
   (** Complete OCF container document *)
   type doc = ocf_container elt
 
-  (** XML meta information: doctype, and the like *)
-  module Info : Xml_sigs.Info
-
   val doc_toelt : doc -> Xml.elt
   (** Binding to outisde XML lib to render entire document *)
 
   (******* Attributes *******)
 
-  val a_fullpath : text wrap -> [> `Path] attrib
+  val a_fullpath : path wrap -> [> `Path] attrib
   (** Path to the rootfile *)
 
   val a_mediatype : text wrap -> [> `Mediatype] attrib
   (** Type of the rootfile *)
 
-  val a_version : text wrap -> [> `Version] attrib
+  val a_version : version wrap -> [> `Version] attrib
   (** Version of the OCF container *)
 
   (******* Elements *******)
