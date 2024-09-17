@@ -46,7 +46,7 @@ type core_mediatype =
   | (* Video types *)
     `Mpeg
   | `Mp4
-  | `Oog_Opus
+  | `Ogg_Opus
   | (* Styling *)
     `Css
   | (* Fonts *)

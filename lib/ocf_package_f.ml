@@ -43,7 +43,7 @@ module Make (Xml : Xml_sigs.T) = struct
         "audio/mpeg"
     | `Mp4 ->
         "audio/mp4"
-    | `Oog_Opus ->
+    | `Ogg_Opus ->
         "audio/ogg; codecs=opus"
     | `Css ->
         "text/css"
