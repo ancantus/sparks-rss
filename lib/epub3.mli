@@ -1,10 +1,7 @@
 open Epub_types
 
-type title = string
-(** A human readable title used in the table of contents *)
-
-type file_contents = string
 (** The read contents of a file to be saved to the epub publication *)
+type file_contents = string
 
 type epub_metadata =
   | Title of string
@@ -21,14 +18,14 @@ type content =
   | CoverImage of base_content
 
 type publication =
-  { path: string  (** Path to temporary dir where epub is being contructed *)
+  { archive: Zip.out_file  (** in progress epub zip file *)
   ; metadata: string * string * Tyxml_xml.elt
         (** opf filename, identifier_id, and Metadata of the epub document *)
   ; content: content list
         (** Content (displayble components & supporting docs) within the epub doc *)
   ; doc_count: int  (** Number of toc splitable docs *) }
 
-val save_xhtml_doc : publication -> title -> file_contents -> publication
+val save_xhtml_doc : publication -> text -> file_contents -> publication
 (** Save an XHTML content document to an in-process epub document *)
 
 val save_support_doc :
@@ -39,7 +36,13 @@ val save_cover_image :
   publication -> path -> core_mediatype -> file_contents -> publication
 (** Save a cover image to an in-process epub document *)
 
-val open_out_pub : id -> title -> language -> epub_metadata list -> publication
+val open_out_pub :
+     unique_id:id
+  -> title:string
+  -> ln:string
+  -> opt_meta:epub_metadata list
+  -> string
+  -> publication
 (** Open an output writable EPUB3 publication. Use other functions to add data to the publication. Only valid when closed *)
 
 val close_pub : publication -> unit

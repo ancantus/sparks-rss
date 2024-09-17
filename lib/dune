@@ -5,4 +5,4 @@
   ocf_container_sig
   ocf_xml_sig
   ocf_package_sig)
- (libraries rss ezcurl webdriver_cohttp-lwt-unix lambdasoup tyxml))
+ (libraries rss ezcurl webdriver_cohttp-lwt-unix lambdasoup tyxml camlzip))

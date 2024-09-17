@@ -4,8 +4,6 @@ module P = Ocf_package_f.Make (Tyxml_xml)
 module PP = Xml_print.Make_typed_fmt (Tyxml_xml) (P)
 open Epub_types
 
-type title = string
-
 type file_contents = string
 
 type epub_metadata =
@@ -22,28 +20,16 @@ type content =
   | CoverImage of base_content
 
 type publication =
-  { path: string
+  { archive: Zip.out_file
   ; metadata: string * string * Tyxml_xml.elt
   ; content: content list
   ; doc_count: int }
 
-(** Replacement for Filesystem.temp_dir that's only in >5.0 OCAML *)
-let temp_dir ?temp_dir ?perms prefix suffix =
-  let base_dir =
-    Option.value temp_dir ~default:(Filename.get_temp_dir_name ())
-  in
-  Random.self_init () ;
-  let rand_str = Random.int 99999 |> Int.to_string in
-  let path = base_dir ^ "/" ^ prefix ^ rand_str ^ suffix ^ "/" in
-  Sys.mkdir path (Option.value ~default:0o777 perms) ;
-  path
+let write_xml_like_file xml_pp pub path doc =
+  let data = Format.asprintf "%a" xml_pp doc in
+  Zip.add_entry data pub.archive path
 
-let write_xml_like_file xml_pp path doc =
-  let file = open_out path in
-  let fmt = Format.formatter_of_out_channel file in
-  xml_pp fmt doc ; close_out file
-
-let write_ocf_container = write_xml_like_file (PC.pp ~indent:true ())
+let write_ocf_container = write_xml_like_file (PC.pp ~indent:false ())
 
 let write_ocf_package = write_xml_like_file (PP.pp ~indent:true ())
 
@@ -105,39 +91,13 @@ let build_metadata uuid_id uuid title lang opt_meta =
       [] (* Links to metadata in other docs *) )
 
 let add_content pub newc =
-  { path= pub.path
+  { archive= pub.archive
   ; metadata= pub.metadata
   ; content= newc :: pub.content
   ; doc_count= 1 + pub.doc_count }
 
-let rec prepare_parent_dirs root path =
-  let rec path_join s segments =
-    match segments with
-    | [] ->
-        s
-    | head :: [] ->
-        s ^ head
-    | head :: tail ->
-        path_join (s ^ head ^ "/") tail
-  in
-  let mkdir path =
-    if Sys.file_exists path then () else Sys.mkdir path 0o777
-  in
-  match String.split_on_char '/' path with
-  | [] ->
-      ()
-  | _filename :: [] ->
-      ()
-  | dir :: tail ->
-      let next_root = root ^ dir ^ "/" in
-      mkdir next_root ;
-      prepare_parent_dirs next_root (path_join "" tail)
-
 let save_epub_content (pub : publication) path data =
-  prepare_parent_dirs pub.path path ;
-  let file = open_out_bin (pub.path ^ path) in
-  try output_string file data ; close_out file
-  with e -> close_out file ; raise e
+  Zip.add_entry data pub.archive path
 
 let save_xhtml_doc (pub : publication) title data =
   let doc_id = Printf.sprintf "id%05d" pub.doc_count in
@@ -225,21 +185,28 @@ let make_epub_metadata uuid title lang opt_meta =
   let identifier_id = "uuid-id" in
   (identifier_id, build_metadata identifier_id uuid title lang opt_meta)
 
-let make_meta_inf root opf_path =
-  let meta_inf_path = root ^ "/META-INF/" in
-  Sys.mkdir meta_inf_path 0o777 ;
-  ocf_container opf_path |> write_ocf_container (meta_inf_path ^ "container.xml")
+let make_meta_inf pub opf_path =
+  let container_path = "/META-INF/container.xml" in
+  ocf_container opf_path |> write_ocf_container pub container_path
 
-let open_out_pub uuid title lang (opt_meta : epub_metadata list) =
-  let epub_root = temp_dir ".epub3" uuid in
+let make_mimetype_file pub =
+  Zip.add_entry "application/epub+zip" pub.archive "mimetype"
+
+let open_out_pub ~unique_id:uuid ~title ~ln:lang
+    ~(opt_meta : epub_metadata list) dst =
   let package_path = "content.opf" in
-  make_meta_inf epub_root package_path ;
   let id, meta_elem = make_epub_metadata uuid title lang opt_meta in
-  { path= epub_root
-  ; metadata= (package_path, id, meta_elem)
-  ; content= []
-  ; doc_count= 0 }
+  let pub =
+    { archive= Zip.open_out dst
+    ; metadata= (package_path, id, meta_elem)
+    ; content= []
+    ; doc_count= 0 }
+  in
+  make_meta_inf pub package_path ;
+  make_mimetype_file pub ;
+  pub
 
 let close_pub (pub : publication) =
   let package_path, _, _ = pub.metadata in
-  make_ocf_package pub |> write_ocf_package (pub.path ^ package_path)
+  make_ocf_package pub |> write_ocf_package pub package_path ;
+  Zip.close_out pub.archive

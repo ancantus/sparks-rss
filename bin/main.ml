@@ -58,8 +58,9 @@ let () =
   let pub_id = "urn:uuid:f7508264-d5c3-4508-8d84-7e52a1295cc2" in
   let pub_title = "Hacker News Test EPUB" in
   let fold_pub f list pub = List.fold_left f pub list in
-  Sparks_rss.Epub3.open_out_pub pub_id pub_title "en"
-    [ModifiedDatetime "2024-09-13T03:20:08Z"]
+  Sparks_rss.Epub3.open_out_pub ~unique_id:pub_id ~title:pub_title ~ln:"en"
+    ~opt_meta:[ModifiedDatetime "2024-09-13T03:20:08Z"]
+    "/tmp/test.epub"
   |> fold_pub save_document docs
   |> fold_pub save_support support
   |> (fun p -> save_cover_image p cover_img)
