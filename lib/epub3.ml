@@ -2,6 +2,7 @@ module C = Ocf_container_f.Make (Tyxml_xml)
 module PC = Xml_print.Make_typed_fmt (Tyxml_xml) (C)
 module P = Ocf_package_f.Make (Tyxml_xml)
 module PP = Xml_print.Make_typed_fmt (Tyxml_xml) (P)
+module HP = Xml_print.Make_typed_fmt (Tyxml_xml) (Tyxml.Html)
 open Epub_types
 
 type file_contents = string
@@ -12,15 +13,9 @@ type epub_metadata =
   | Language of string
   | ModifiedDatetime of string
 
-type base_content = core_mediatype * string * string
-
-type content =
-  | Document of base_content * string
-  | SupportDocument of base_content
-  | CoverImage of base_content
-
 type publication =
   { archive: Zip.out_file
+  ; primary_lang: string
   ; metadata: string * string * Tyxml_xml.elt
   ; content: content list
   ; doc_count: int }
@@ -32,6 +27,8 @@ let write_xml_like_file xml_pp pub path doc =
 let write_ocf_container = write_xml_like_file (PC.pp ~indent:false ())
 
 let write_ocf_package = write_xml_like_file (PP.pp ~indent:true ())
+
+let write_xhtml = write_xml_like_file (HP.pp ~indent:true ())
 
 let ocf_container path =
   let opf_version = "1.0" in
@@ -90,10 +87,11 @@ let build_metadata uuid_id uuid title lang opt_meta =
       [] (* Legacy Metadata *)
       [] (* Links to metadata in other docs *) )
 
-let add_content pub newc =
+let add_content ?(rev = false) pub newc =
   { archive= pub.archive
+  ; primary_lang= pub.primary_lang
   ; metadata= pub.metadata
-  ; content= newc :: pub.content
+  ; content= (if rev then pub.content @ [newc] else newc :: pub.content)
   ; doc_count= 1 + pub.doc_count }
 
 let save_epub_content (pub : publication) path data =
@@ -144,6 +142,10 @@ let build_manifest_item = function
             ; a_mediatype mime
             ; a_properties ["cover-image"] ]
           () )
+  | CoverPage (mime, id, path) ->
+      P.(manifest_item ~a:[a_id id; a_href path; a_mediatype mime] ())
+  | TableOfContents (mime, id, path) ->
+      P.(manifest_item ~a:[a_id id; a_href path; a_mediatype mime] ())
 
 let build_manifest docs =
   let items = List.map build_manifest_item docs in
@@ -157,6 +159,10 @@ let build_manifest docs =
 
 let build_spine_item = function
   | Document ((_, id, _), _) ->
+      Some P.(itemref ~a:[a_idref id] ())
+  | CoverPage (_, id, _) ->
+      Some P.(itemref ~a:[a_idref id] ())
+  | TableOfContents (_, id, _) ->
       Some P.(itemref ~a:[a_idref id] ())
   | _ ->
       None
@@ -192,12 +198,20 @@ let make_meta_inf pub opf_path =
 let make_mimetype_file pub =
   Zip.add_entry "application/epub+zip" pub.archive "mimetype"
 
+let make_toc pub =
+  let path, nav_doc =
+    Ocf_nav.make_nav ~title:"Table of Contents" ~ln:pub.primary_lang pub.content
+  in
+  write_xhtml pub path nav_doc ;
+  TableOfContents (`Xhtml, "toc", path) |> add_content ~rev:true pub
+
 let open_out_pub ~unique_id:uuid ~title ~ln:lang
     ~(opt_meta : epub_metadata list) dst =
   let package_path = "content.opf" in
   let id, meta_elem = make_epub_metadata uuid title lang opt_meta in
   let pub =
     { archive= Zip.open_out dst
+    ; primary_lang= lang
     ; metadata= (package_path, id, meta_elem)
     ; content= []
     ; doc_count= 0 }
@@ -208,5 +222,8 @@ let open_out_pub ~unique_id:uuid ~title ~ln:lang
 
 let close_pub (pub : publication) =
   let package_path, _, _ = pub.metadata in
-  make_ocf_package pub |> write_ocf_package pub package_path ;
+  make_toc pub
+  |> (* Table of contents dynamically created from all the documents *)
+  make_ocf_package
+  |> write_ocf_package pub package_path ;
   Zip.close_out pub.archive

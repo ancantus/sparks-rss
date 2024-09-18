@@ -9,16 +9,9 @@ type epub_metadata =
   | Language of string
   | ModifiedDatetime of string
 
-(** Shared info for all content documents (MIME type, document unique id, path within epub file) *)
-type base_content = core_mediatype * string * string
-
-type content =
-  | Document of base_content * string  (** basic content info, document title *)
-  | SupportDocument of base_content
-  | CoverImage of base_content
-
 type publication =
   { archive: Zip.out_file  (** in progress epub zip file *)
+  ; primary_lang: string
   ; metadata: string * string * Tyxml_xml.elt
         (** opf filename, identifier_id, and Metadata of the epub document *)
   ; content: content list

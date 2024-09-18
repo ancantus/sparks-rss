@@ -188,3 +188,14 @@ type bindings = [`Bindings]
 type collection = [`Collection]
 
 type collection_attrib = [dir_attrib | id_attrib | language_attrib | `Role]
+
+(** Shared info for all content documents (MIME type, document unique id, path within epub file) *)
+type base_content = core_mediatype * string * string
+
+(** Classe of documents that are permitted in the EPUB doc *)
+type content =
+  | Document of base_content * string  (** basic content info, document title *)
+  | SupportDocument of base_content
+  | CoverImage of base_content
+  | CoverPage of base_content
+  | TableOfContents of base_content
