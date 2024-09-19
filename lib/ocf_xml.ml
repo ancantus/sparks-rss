@@ -13,6 +13,8 @@ module Make (Xml : Xml_sigs.T) = struct
   (* internal building blocks *)
   let a_string = Xml.string_attrib
 
+  let a_int = Xml.int_attrib
+
   let a_string_list label items =
     let rec space_sep_string acc items =
       match items with

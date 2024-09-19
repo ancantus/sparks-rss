@@ -81,6 +81,8 @@ type refines_attrib = [`Refines]
 
 type language_attrib = [`Language]
 
+type xmllang_attrib = [`Xml_Language]
+
 (** Common elements across multiple OCF elements *)
 type txt = [`PCDATA]
 
@@ -189,6 +191,90 @@ type collection = [`Collection]
 
 type collection_attrib = [dir_attrib | id_attrib | language_attrib | `Role]
 
+(******** NCX File ********)
+type ocf_ncx = [`Ncx]
+
+type ncx_attrib = [version_attrib | xmllang_attrib | language_attrib]
+
+type ncx_meta = [`Ncx_Meta]
+
+type ncx_head = [`Ncx_Head]
+
+type ncx_head_children = [ | ncx_meta]
+
+type ncx_meta_attrib = [xmllang_attrib | `Content | `Name | `Scheme]
+
+type class_attrib = [`Class]
+
+type default_content_attrib = [id_attrib | class_attrib]
+
+type src_attrib = [`Src]
+
+type text_content = [`Ncx_Content_Text]
+
+type text_content_attrib = [ | default_content_attrib]
+
+type audio_content = [`Ncx_Content_Audio]
+
+type audio_content_attrib =
+  [default_content_attrib | src_attrib | `ClipBegin | `ClipEnd]
+
+type image_content = [`Ncx_Content_Image]
+
+type image_content_attrib = [default_content_attrib | src_attrib]
+
+type ncx_content = [text_content | audio_content | image_content]
+
+type doc_title = [`Ncx_Doc_Title]
+
+type doc_title_attrib = [ | id_attrib]
+
+type doc_author = [`Ncx_Doc_Author]
+
+type doc_author_attrib = [ | id_attrib]
+
+type navmap = [`Ncx_Navmap]
+
+type navmap_attrib = [ | id_attrib]
+
+type navpoint = [`Ncx_Navpoint]
+
+type playorder_attrib = [`PlayOrder]
+
+type navpoint_attrib = [id_attrib | class_attrib | playorder_attrib]
+
+type navlabel = [`Ncx_Navlabel]
+
+type navcontent = [`Ncx_Navcontent]
+
+type navpoint_children = [navlabel | navpoint]
+
+type navlabel_attrib = [ | language_attrib]
+
+type pagelist = [`Ncx_Pagelist]
+
+type pagelist_attrib = [id_attrib | class_attrib]
+
+type pagetarget = [`Ncx_Pagetarget]
+
+type value_attrib = [`Value]
+
+type pagetarget_attrib = [id_attrib | class_attrib | `Type]
+
+type navinfo = [`Ncx_Navinfo]
+
+type pagelist_children = [pagetarget | navinfo | navlabel]
+
+type navlist = [`Ncx_Navlist]
+
+type navlist_attrib = [id_attrib | class_attrib]
+
+type navtarget = [`Ncx_Navtarget]
+
+type navlist_children = [navinfo | navlabel | navtarget]
+
+type navtarget_opt_attrib = [class_attrib | value_attrib]
+
 (** Shared info for all content documents (MIME type, document unique id, path within epub file) *)
 type base_content = core_mediatype * string * string
 
@@ -199,3 +285,4 @@ type content =
   | CoverImage of base_content
   | CoverPage of base_content
   | TableOfContents of base_content
+  | NavigationCenter of base_content

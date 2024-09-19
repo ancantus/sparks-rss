@@ -2,6 +2,8 @@ module C = Ocf_container_f.Make (Tyxml_xml)
 module PC = Xml_print.Make_typed_fmt (Tyxml_xml) (C)
 module P = Ocf_package_f.Make (Tyxml_xml)
 module PP = Xml_print.Make_typed_fmt (Tyxml_xml) (P)
+module N = Ocf_ncx_f.Make (Tyxml_xml)
+module NP = Xml_print.Make_typed_fmt (Tyxml_xml) (N)
 module HP = Xml_print.Make_typed_fmt (Tyxml_xml) (Tyxml.Html)
 open Epub_types
 
@@ -13,10 +15,16 @@ type epub_metadata =
   | Language of string
   | ModifiedDatetime of string
 
+type pub_metadata =
+  { title: string
+  ; unique_id: string
+  ; primary_lang: string
+  ; opt_meta: epub_metadata list
+  ; package_path: string }
+
 type publication =
   { archive: Zip.out_file
-  ; primary_lang: string
-  ; metadata: string * string * Tyxml_xml.elt
+  ; metadata: pub_metadata
   ; content: content list
   ; doc_count: int }
 
@@ -27,6 +35,8 @@ let write_xml_like_file xml_pp pub path doc =
 let write_ocf_container = write_xml_like_file (PC.pp ~indent:false ())
 
 let write_ocf_package = write_xml_like_file (PP.pp ~indent:true ())
+
+let write_ncx = write_xml_like_file (NP.pp ~indent:true ())
 
 let write_xhtml = write_xml_like_file (HP.pp ~indent:true ())
 
@@ -89,7 +99,6 @@ let build_metadata uuid_id uuid title lang opt_meta =
 
 let add_content ?(rev = false) pub newc =
   { archive= pub.archive
-  ; primary_lang= pub.primary_lang
   ; metadata= pub.metadata
   ; content= (if rev then pub.content @ [newc] else newc :: pub.content)
   ; doc_count= 1 + pub.doc_count }
@@ -146,6 +155,8 @@ let build_manifest_item = function
       P.(manifest_item ~a:[a_id id; a_href path; a_mediatype mime] ())
   | TableOfContents (mime, id, path) ->
       P.(manifest_item ~a:[a_id id; a_href path; a_mediatype mime] ())
+  | NavigationCenter (mime, id, path) ->
+      P.(manifest_item ~a:[a_id id; a_href path; a_mediatype mime] ())
 
 let build_manifest docs =
   let items = List.map build_manifest_item docs in
@@ -168,28 +179,35 @@ let build_spine_item = function
       None
 
 let build_spine docs =
+  let rec find_ncx_id = function
+    | [] ->
+        None
+    | NavigationCenter (_, id, _) :: _ ->
+        Some id
+    | _ :: tail ->
+        find_ncx_id tail
+  in
+  let ncx_id = find_ncx_id docs in
+  let spine_attrib = match ncx_id with None -> [] | Some s -> [P.a_toc s] in
   let items = optional_map build_spine_item docs in
   match items with
   | head :: tail ->
-      P.spine head tail
+      P.spine ~a:spine_attrib head tail
   | [] ->
       failwith "Unable to build spine: must have at least one xhtml document"
 
 let make_ocf_package pub =
+  let identifier_id = "uuid-id" in
   let epub_version = "3.0" in
-  let _, identifier_id, meta_elem = pub.metadata in
   P.(
     ocf_package
       ~a:[a_unique_id identifier_id; a_version epub_version]
-      meta_elem
+      (build_metadata identifier_id pub.metadata.unique_id pub.metadata.title
+         pub.metadata.primary_lang pub.metadata.opt_meta )
       (build_manifest pub.content)
       (build_spine pub.content) None (* Legacy guide elements *)
       None (* Deprecated bindings element *)
       [] (* Collection elements *) )
-
-let make_epub_metadata uuid title lang opt_meta =
-  let identifier_id = "uuid-id" in
-  (identifier_id, build_metadata identifier_id uuid title lang opt_meta)
 
 let make_meta_inf pub opf_path =
   let container_path = "/META-INF/container.xml" in
@@ -198,9 +216,51 @@ let make_meta_inf pub opf_path =
 let make_mimetype_file pub =
   Zip.add_entry "application/epub+zip" pub.archive "mimetype"
 
+let make_navpoints docs =
+  let rec find_navpoints l i d =
+    match d with
+    | [] ->
+        l
+    | Document ((_, _, path), title) :: tail ->
+        find_navpoints ((path, i, title) :: l) (i + 1) tail
+    | _ :: tail ->
+        find_navpoints l i tail
+  in
+  let make_navpoint path seq title =
+    let id = "ncx-" ^ Int.to_string seq in
+    N.(
+      navpoint (a_id id) (a_playorder seq)
+        (txt title |> text_content |> fun t -> navlabel t [])
+        (a_src path |> navcontent) )
+  in
+  find_navpoints [] 0 docs |> List.map (fun (p, s, t) -> make_navpoint p s t)
+
+let build_ncx pub =
+  let version = "2005-1" in
+  N.(
+    ncx
+      ~a:[a_xml_lang pub.metadata.primary_lang]
+      (a_version version)
+      (head (meta (a_name "") (a_content "")) [])
+      (txt pub.metadata.title |> text_content |> fun t -> doc_title t [])
+      [] (* Author list TODO *)
+      ( match make_navpoints pub.content with
+      | head :: tail ->
+          navmap head tail
+      | _ ->
+          failwith
+            "NCX file creation failure: requires at least one linkable \
+             document." )
+      [] (* Nav List *) )
+
+let make_ncx ?(path = "toc.ncx") pub =
+  build_ncx pub |> write_ncx pub path ;
+  NavigationCenter (`Ncx, "ncx", path) |> add_content pub
+
 let make_toc pub =
   let path, nav_doc =
-    Ocf_nav.make_nav ~title:"Table of Contents" ~ln:pub.primary_lang pub.content
+    Ocf_nav.make_nav ~title:"Table of Contents" ~ln:pub.metadata.primary_lang
+      pub.content
   in
   write_xhtml pub path nav_doc ;
   TableOfContents (`Xhtml, "toc", path) |> add_content ~rev:true pub
@@ -208,11 +268,10 @@ let make_toc pub =
 let open_out_pub ~unique_id:uuid ~title ~ln:lang
     ~(opt_meta : epub_metadata list) dst =
   let package_path = "content.opf" in
-  let id, meta_elem = make_epub_metadata uuid title lang opt_meta in
   let pub =
     { archive= Zip.open_out dst
-    ; primary_lang= lang
-    ; metadata= (package_path, id, meta_elem)
+    ; metadata=
+        {unique_id= uuid; title; primary_lang= lang; opt_meta; package_path}
     ; content= []
     ; doc_count= 0 }
   in
@@ -220,10 +279,9 @@ let open_out_pub ~unique_id:uuid ~title ~ln:lang
   make_mimetype_file pub ;
   pub
 
-let close_pub (pub : publication) =
-  let package_path, _, _ = pub.metadata in
-  make_toc pub
+let close_pub pub =
+  make_ncx pub |> make_toc
   |> (* Table of contents dynamically created from all the documents *)
   make_ocf_package
-  |> write_ocf_package pub package_path ;
+  |> write_ocf_package pub pub.metadata.package_path ;
   Zip.close_out pub.archive

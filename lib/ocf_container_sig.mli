@@ -50,7 +50,6 @@ module Make (Xml : Xml_sigs.T) : sig
       with type 'a Xml.W.t = 'a Xml.W.t
        and type 'a Xml.W.tlist = 'a Xml.W.tlist
        and type ('a, 'b) Xml.W.ft = ('a, 'b) Xml.W.ft
-       and type Xml.uri = Xml.uri
        and type Xml.attrib = Xml.attrib
        and type Xml.elt = Xml.elt
 end

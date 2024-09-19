@@ -107,6 +107,8 @@ module Make (Xml : Xml_sigs.T) = struct
 
   let a_idref = a_string "idref"
 
+  let a_toc = a_string "toc"
+
   (* Elements *)
   let ocf_package ?a metadata manifest spine guide bindings collection =
     let content =

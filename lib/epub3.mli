@@ -9,11 +9,16 @@ type epub_metadata =
   | Language of string
   | ModifiedDatetime of string
 
+type pub_metadata =
+  { title: string
+  ; unique_id: string
+  ; primary_lang: string
+  ; opt_meta: epub_metadata list
+  ; package_path: string }
+
 type publication =
   { archive: Zip.out_file  (** in progress epub zip file *)
-  ; primary_lang: string
-  ; metadata: string * string * Tyxml_xml.elt
-        (** opf filename, identifier_id, and Metadata of the epub document *)
+  ; metadata: pub_metadata
   ; content: content list
         (** Content (displayble components & supporting docs) within the epub doc *)
   ; doc_count: int  (** Number of toc splitable docs *) }

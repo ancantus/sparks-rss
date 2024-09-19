@@ -47,6 +47,9 @@ module type T = sig
   val a_idref : id wrap -> [`Idref] attrib
   (** ID attribute referenced by the element *)
 
+  val a_toc : id wrap -> [`Table_Of_Contents] attrib
+  (** The Id of the NCX file that contains the table of contents for EPUB2 legacy mode *)
+
   (******* Elements *******)
   val ocf_package :
        ?a:ocf_package_attrib attrib list
