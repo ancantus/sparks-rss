@@ -282,7 +282,7 @@ let make_ocf_package pub =
       [] (* Collection elements *) )
 
 let make_meta_inf pub opf_path =
-  let container_path = "/META-INF/container.xml" in
+  let container_path = "META-INF/container.xml" in
   ocf_container opf_path |> write_ocf_container pub container_path
 
 let make_mimetype_file pub =
