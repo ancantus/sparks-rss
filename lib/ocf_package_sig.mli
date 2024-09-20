@@ -20,6 +20,12 @@ module type T = sig
   val a_prefix : prefix list -> [> `Prefix] attrib
   (** Custom extra mappings between a property and an external resource *)
 
+  val a_scheme : text wrap -> [> `Scheme] attrib
+  (** Meta tag scheme *)
+
+  val a_refines : text wrap -> [> `Refines] attrib
+  (** Meta tag scheme *)
+
   val a_lang : language wrap -> [> `Language] attrib
   (** A language tag specifying the textual content of the element *)
 

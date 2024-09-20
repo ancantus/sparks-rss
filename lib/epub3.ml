@@ -15,9 +15,16 @@ type epub_metadata =
   | Language of string
   | ModifiedDatetime of string
 
+type unique_id =
+  | Uuid of string
+  | Doi of string
+  | Isbn of string
+  | Isbn10 of string
+  | Isbn13 of string
+
 type pub_metadata =
   { title: string
-  ; unique_id: string
+  ; unique_id: unique_id
   ; primary_lang: string
   ; opt_meta: epub_metadata list
   ; package_path: string }
@@ -83,17 +90,70 @@ let package_metadata = function
 
 let package_meta_elements = optional_map package_metadata
 
-let build_metadata uuid_id uuid title lang opt_meta =
+let rec make_id_txt = function
+  | Uuid txt ->
+      "urn:uuid:" ^ txt
+  | Doi txt ->
+      "urn:doi:" ^ txt
+  | Isbn txt ->
+      "urn:isbn:" ^ txt
+  | Isbn10 txt ->
+      Isbn txt |> make_id_txt
+  | Isbn13 txt ->
+      Isbn txt |> make_id_txt
+
+let build_metadata identifier_id identifier title lang opt_meta =
+  let is_digit = function '0' .. '9' -> true | _ -> false in
+  let count_digits =
+    String.fold_left (fun i c -> if is_digit c then i + 1 else i) 0
+  in
+  let rec make_id_meta id =
+    match id with
+    | Uuid _ ->
+        []
+    | Doi _ ->
+        [ P.(
+            meta
+              ~a:
+                [ a_refines ("#" ^ identifier_id)
+                ; a_property "identifier-type"
+                ; a_scheme "onix:codelist5" ]
+              (txt "06") ) ]
+    | Isbn10 _ ->
+        [ P.(
+            meta
+              ~a:
+                [ a_refines ("#" ^ identifier_id)
+                ; a_property "identifier-type"
+                ; a_scheme "onix:codelist5" ]
+              (txt "02") ) ]
+    | Isbn13 _ ->
+        [ P.(
+            meta
+              ~a:
+                [ a_refines ("#" ^ identifier_id)
+                ; a_property "identifier-type"
+                ; a_scheme "onix:codelist5" ]
+              (txt "15") ) ]
+    | Isbn txt -> (
+      match count_digits txt with
+      | 10 ->
+          Isbn10 txt |> make_id_meta
+      | 13 ->
+          Isbn13 txt |> make_id_meta
+      | _ ->
+          failwith "ISBN identifier does not have 10 or 13 digits" )
+  in
   P.(
     metadata
       ~a:
         [ a_namespace ("dc", "http://purl.org/dc/elements/1.1/")
         ; a_namespace ("dcterms", "http://purl.org/dc/terms/") ]
-      (dc_identifier ~a:[a_id uuid_id] (txt uuid))
+      (dc_identifier ~a:[a_id identifier_id] (make_id_txt identifier |> txt))
       (dc_title (txt title))
       (dc_language (txt lang))
       (dc_meta_elements opt_meta)
-      (package_meta_elements opt_meta)
+      (package_meta_elements opt_meta @ make_id_meta identifier)
       [] (* Legacy Metadata *)
       [] (* Links to metadata in other docs *) )
 
@@ -197,7 +257,19 @@ let build_spine docs =
       failwith "Unable to build spine: must have at least one xhtml document"
 
 let make_ocf_package pub =
-  let identifier_id = "uuid-id" in
+  let make_identifier_id = function
+    | Uuid _ ->
+        "uuid-id"
+    | Doi _ ->
+        "doi-id"
+    | Isbn _ ->
+        "isbn-id"
+    | Isbn10 _ ->
+        "isbn-10-id"
+    | Isbn13 _ ->
+        "isbn-13-id"
+  in
+  let identifier_id = make_identifier_id pub.metadata.unique_id in
   let epub_version = "3.0" in
   P.(
     ocf_package
@@ -217,14 +289,14 @@ let make_mimetype_file pub =
   Zip.add_entry "application/epub+zip" pub.archive "mimetype"
 
 let make_navpoints docs =
-  let rec find_navpoints l i d =
+  let rec find_navpoints l d =
     match d with
     | [] ->
-        l
+        List.mapi (fun i (p, t) -> (i, p, t)) l
     | Document ((_, _, path), title) :: tail ->
-        find_navpoints ((path, i, title) :: l) (i + 1) tail
+        find_navpoints ((path, title) :: l) tail
     | _ :: tail ->
-        find_navpoints l i tail
+        find_navpoints l tail
   in
   let make_navpoint path seq title =
     let id = "ncx-" ^ Int.to_string seq in
@@ -233,7 +305,7 @@ let make_navpoints docs =
         (txt title |> text_content |> fun t -> navlabel t [])
         (a_src path |> navcontent) )
   in
-  find_navpoints [] 0 docs |> List.map (fun (p, s, t) -> make_navpoint p s t)
+  find_navpoints [] docs |> List.map (fun (s, p, t) -> make_navpoint p s t)
 
 let build_ncx pub =
   let version = "2005-1" in
@@ -241,7 +313,10 @@ let build_ncx pub =
     ncx
       ~a:[a_xml_lang pub.metadata.primary_lang]
       (a_version version)
-      (head (meta (a_name "") (a_content "")) [])
+      (head
+         (meta (a_name "dtb:uid")
+            (make_id_txt pub.metadata.unique_id |> a_content) )
+         [] )
       (txt pub.metadata.title |> text_content |> fun t -> doc_title t [])
       [] (* Author list TODO *)
       ( match make_navpoints pub.content with

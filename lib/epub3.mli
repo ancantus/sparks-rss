@@ -9,9 +9,16 @@ type epub_metadata =
   | Language of string
   | ModifiedDatetime of string
 
+type unique_id =
+  | Uuid of string
+  | Doi of string
+  | Isbn of string
+  | Isbn10 of string
+  | Isbn13 of string
+
 type pub_metadata =
   { title: string
-  ; unique_id: string
+  ; unique_id: unique_id
   ; primary_lang: string
   ; opt_meta: epub_metadata list
   ; package_path: string }
@@ -35,7 +42,7 @@ val save_cover_image :
 (** Save a cover image to an in-process epub document *)
 
 val open_out_pub :
-     unique_id:id
+     unique_id:unique_id
   -> title:string
   -> ln:string
   -> opt_meta:epub_metadata list

@@ -87,6 +87,10 @@ module Make (Xml : Xml_sigs.T) = struct
 
   let a_prefix p = List.map prefix_to_string p |> a_string_list "prefix"
 
+  let a_scheme = a_string "scheme"
+
+  let a_refines = a_string "refines"
+
   let a_lang = a_string "xml:lang"
 
   let a_unique_id = a_string "unique-identifier"

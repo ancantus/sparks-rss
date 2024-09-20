@@ -55,7 +55,7 @@ let save_cover_image pub i =
   Sparks_rss.Epub3.save_cover_image pub path mimetype (load_file path)
 
 let () =
-  let pub_id = "urn:uuid:f7508264-d5c3-4508-8d84-7e52a1295cc2" in
+  let pub_id = Sparks_rss.(Epub3.Uuid (Uuid.uuid4 ())) in
   let pub_title = "Hacker News Test EPUB" in
   let fold_pub f list pub = List.fold_left f pub list in
   Sparks_rss.Epub3.open_out_pub ~unique_id:pub_id ~title:pub_title ~ln:"en"
