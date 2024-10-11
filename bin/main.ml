@@ -1,29 +1,34 @@
 (*let test_url =
   Uri.of_string "https://www.scrapingbee.com/blog/ocaml-web-scraping/"*)
-(*
+
 let webdriver_port = 4444
+
 let () =
   let articles =
     Sparks_rss.Syndications.from_file
-      "/home/restep/projects/sparks-rss/resources/rss_short"
+      "/home/restep/projects/sparks-rss/resources/rss_minimal"
   in
   let links =
     List.map (fun (a : Sparks_rss.Syndications.article) -> a.link) articles
   in
-  try
-    let parsed_links =
-      Lwt_main.run (Sparks_rss.Webdriver.fetch_sources webdriver_port links)
-    in
-    List.iter
-      (fun n -> Sparks_rss.Spark.parse_fx_reader n |> print_endline)
-      parsed_links
-  with Webdriver_cohttp_lwt_unix.Webdriver e ->
-    Printf.fprintf stderr "[FAIL] Webdriver error: %s\n%!"
-      (Webdriver_cohttp_lwt_unix.Error.to_string e) ;
-    Printexc.print_backtrace stderr ;
-    Printf.fprintf stderr "\n%!"
+  let parsed_links =
+    try
+      Some
+        (Lwt_main.run (Sparks_rss.Webdriver.fetch_sources webdriver_port links))
+    with Webdriver_cohttp_lwt_unix.Webdriver e ->
+      Printf.fprintf stderr "[FAIL] Webdriver error: %s\n%!"
+        (Webdriver_cohttp_lwt_unix.Error.to_string e) ;
+      Printexc.print_backtrace stderr ;
+      Printf.fprintf stderr "\n%!" ;
+      None
+  in
+  let rss_content =
+    Lwt_main.run
+      (Lwt_list.map_p Sparks_rss.Spark.parse_fx_reader (Option.get parsed_links))
+  in
+  List.iter (fun (content, _) -> print_endline content) rss_content
 
-*)
+(*
 let src = "/home/restep/projects/sparks-rss/resources/frankenstein_epub/"
 
 let docs =
@@ -65,3 +70,5 @@ let () =
   |> fold_pub save_support support
   |> (fun p -> save_cover_image p cover_img)
   |> Sparks_rss.Epub3.close_pub
+
+*)

@@ -1,0 +1,14 @@
+<rss version="2.0">
+    <channel>
+        <title>Hacker News</title>
+        <link>https://news.ycombinator.com/</link>
+        <description>Links for the intellectually curious, ranked by readers.</description>
+        <item>
+            <title>This month in Servo: console logging, parallel tables, OpenXR, and more</title>
+            <link>https://servo.org/blog/2024/07/31/this-month-in-servo/</link>
+            <pubDate>Thu, 1 Aug 2024 04:21:46 +0000</pubDate>
+            <comments>https://news.ycombinator.com/item?id=41126130</comments>
+            <description><![CDATA[<a href="https://news.ycombinator.com/item?id=41126130">Comments</a>]]></description>
+        </item>
+    </channel>
+</rss>

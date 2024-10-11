@@ -6,4 +6,4 @@
   ocf_xml_sig
   ocf_package_sig
   ocf_ncx_sig)
- (libraries rss ezcurl webdriver_cohttp-lwt-unix lambdasoup tyxml camlzip))
+ (libraries rss ezcurl webdriver_cohttp-lwt-unix lambdasoup tyxml camlzip lwt_ssl))
