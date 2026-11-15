@@ -45,13 +45,34 @@ opam install . --deps-only -y
 
 Build and run from the activated switch. Pass one or more RSS feed URLs; the
 CLI downloads linked article pages over HTTP, converts their text and images,
-and writes an EPUB. Pages that need JavaScript to render content may produce
-only their RSS summary.
+and writes an EPUB. `--jobs` controls how many articles are processed at once
+(default: 4). Pages that need JavaScript to render content may produce only
+their RSS summary.
 
 ```sh
 make build
-dune exec sparks_rss -- -o digest.epub https://example.com/feed.xml
+dune exec sparks_rss -- --output digest.epub --jobs 4 FEED_URL [FEED_URL ...]
 ```
 
 The Firefox WebDriver module remains available for future extraction work, but
 the CLI does not require a browser or WebDriver server.
+
+### EPUB validation
+
+The integration test runs EPUBCheck when it is installed and skips otherwise.
+On Ubuntu, install the packaged validator with `sudo apt install epubcheck`.
+EPUBCheck is not in the enabled Fedora repositories on this machine; use the
+[official EPUBCheck distribution](https://w3c.github.io/epubcheck/docs/installation/)
+and set `EPUBCHECK_JAR` to its `epubcheck.jar` path (Java is required).
+
+Run the ordinary test suite with:
+
+```sh
+dune runtest
+```
+
+Force the EPUBCheck integration test to run directly with:
+
+```sh
+make epubcheck
+```
