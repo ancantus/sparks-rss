@@ -31,6 +31,7 @@ type pub_metadata =
 
 type publication =
   { archive: Zip.out_file
+  ; output_path: string
   ; metadata: pub_metadata
   ; content: content list
   ; doc_count: int }
@@ -159,6 +160,7 @@ let build_metadata identifier_id identifier title lang opt_meta =
 
 let add_content ?(rev = false) pub newc =
   { archive= pub.archive
+  ; output_path= pub.output_path
   ; metadata= pub.metadata
   ; content= (if rev then pub.content @ [newc] else newc :: pub.content)
   ; doc_count= 1 + pub.doc_count }
@@ -292,11 +294,94 @@ let make_mimetype_file pub =
   (* EPUB requires this to be the first ZIP entry and stored verbatim. *)
   Zip.add_entry "application/epub+zip" pub.archive ~level:0 "mimetype"
 
+let read_u16 data offset =
+  Char.code (Bytes.get data offset)
+  lor (Char.code (Bytes.get data (offset + 1)) lsl 8)
+
+let read_u32 data offset =
+  Int64.logor (Int64.of_int (read_u16 data offset))
+    (Int64.shift_left (Int64.of_int (read_u16 data (offset + 2))) 16)
+
+let write_u16 data offset value =
+  Bytes.set data offset (Char.chr (value land 0xFF)) ;
+  Bytes.set data (offset + 1) (Char.chr ((value lsr 8) land 0xFF))
+
+let write_u32 data offset value =
+  write_u16 data offset (Int64.to_int value land 0xFFFF) ;
+  write_u16 data (offset + 2)
+    (Int64.to_int (Int64.shift_right_logical value 16) land 0xFFFF)
+
+let has_signature data offset signature =
+  Int64.equal (read_u32 data offset) signature
+
+let find_eocd data =
+  let rec find offset lower_bound =
+    if offset < lower_bound then failwith "Invalid ZIP: end record not found"
+    else if has_signature data offset 0x06054b50L then offset
+    else find (offset - 1) lower_bound
+  in
+  find (Bytes.length data - 22) (max 0 (Bytes.length data - 65_557))
+
+(* Camlzip reserves an unused Zip64 extra field in every local file header.
+   EPUB forbids extra fields on its first, stored `mimetype` entry. *)
+let remove_mimetype_extra_field path =
+  let channel = open_in_bin path in
+  let data = Bytes.of_string (really_input_string channel (in_channel_length channel)) in
+  close_in channel ;
+  if not (has_signature data 0 0x04034b50L) then
+    failwith "Invalid ZIP: local header for mimetype not found" ;
+  let filename_length = read_u16 data 26 in
+  let extra_length = read_u16 data 28 in
+  let filename = Bytes.sub_string data 30 filename_length in
+  if filename <> "mimetype" then failwith "Invalid EPUB: mimetype is not first" ;
+  if extra_length = 0 then ()
+  else if
+    extra_length <> 20
+    || read_u16 data (30 + filename_length) <> 0
+    || read_u16 data (32 + filename_length) <> 16
+  then failwith "Unexpected ZIP extra field on EPUB mimetype entry"
+  else (
+    let extra_start = 30 + filename_length in
+    let removed = extra_length in
+    let patched = Bytes.create (Bytes.length data - removed) in
+    Bytes.blit data 0 patched 0 extra_start ;
+    Bytes.blit data (extra_start + removed) patched extra_start
+      (Bytes.length data - extra_start - removed) ;
+    write_u16 patched 28 0 ;
+    let eocd = find_eocd patched in
+    let cd_offset = Int64.to_int (read_u32 patched (eocd + 16)) - removed in
+    let entry_count = read_u16 patched (eocd + 10) in
+    let rec update_entries offset remaining =
+      if remaining > 0 then (
+        if not (has_signature patched offset 0x02014b50L) then
+          failwith "Invalid ZIP: central directory entry not found" ;
+        let name_length = read_u16 patched (offset + 28) in
+        let extra_length = read_u16 patched (offset + 30) in
+        let comment_length = read_u16 patched (offset + 32) in
+        let local_offset = Int64.to_int (read_u32 patched (offset + 42)) in
+        if local_offset > 0 then
+          write_u32 patched (offset + 42)
+            (Int64.of_int (local_offset - removed)) ;
+        update_entries
+          (offset + 46 + name_length + extra_length + comment_length)
+          (remaining - 1) )
+    in
+    update_entries cd_offset entry_count ;
+    write_u32 patched (eocd + 16) (Int64.of_int cd_offset) ;
+    let temp = Filename.temp_file ~temp_dir:(Filename.dirname path) "epub-" ".zip" in
+    Fun.protect
+      ~finally:(fun () -> if Sys.file_exists temp then Sys.remove temp)
+      (fun () ->
+        let output = open_out_bin temp in
+        output_bytes output patched ;
+        close_out output ;
+        Sys.rename temp path ) )
+
 let make_navpoints docs =
   let rec find_navpoints l d =
     match d with
     | [] ->
-        List.mapi (fun i (p, t) -> (i, p, t)) l
+        List.mapi (fun i (p, t) -> (i + 1, p, t)) l
     | Document ((_, _, path), title) :: tail ->
         find_navpoints ((path, title) :: l) tail
     | _ :: tail ->
@@ -346,9 +431,24 @@ let make_toc pub =
 
 let open_out_pub ~unique_id:uuid ~title ~ln:lang
     ~(opt_meta : epub_metadata list) dst =
+  let modified_datetime =
+    let timestamp = Unix.gmtime (Unix.gettimeofday ()) in
+    ModifiedDatetime
+      (Printf.sprintf "%04d-%02d-%02dT%02d:%02d:%02dZ"
+         (timestamp.tm_year + 1900) (timestamp.tm_mon + 1) timestamp.tm_mday
+         timestamp.tm_hour timestamp.tm_min timestamp.tm_sec )
+  in
+  let opt_meta =
+    let existing =
+      List.find_opt (function ModifiedDatetime _ -> true | _ -> false) opt_meta
+    in
+    Option.value existing ~default:modified_datetime
+    :: List.filter (function ModifiedDatetime _ -> false | _ -> true) opt_meta
+  in
   let package_path = "content.opf" in
   let pub =
     { archive= Zip.open_out dst
+    ; output_path= dst
     ; metadata=
         {unique_id= uuid; title; primary_lang= lang; opt_meta; package_path}
     ; content= []
@@ -363,4 +463,5 @@ let close_pub pub =
   |> (* Table of contents dynamically created from all the documents *)
   make_ocf_package
   |> write_ocf_package pub pub.metadata.package_path ;
-  Zip.close_out pub.archive
+  Zip.close_out pub.archive ;
+  remove_mimetype_extra_field pub.output_path

@@ -25,6 +25,7 @@ type pub_metadata =
 
 type publication =
   { archive: Zip.out_file  (** in progress epub zip file *)
+  ; output_path: string
   ; metadata: pub_metadata
   ; content: content list
         (** Content (displayble components & supporting docs) within the epub doc *)
