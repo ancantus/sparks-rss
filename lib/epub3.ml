@@ -214,7 +214,10 @@ let build_manifest_item = function
   | CoverPage (mime, id, path) ->
       P.(manifest_item ~a:[a_id id; a_href path; a_mediatype mime] ())
   | TableOfContents (mime, id, path) ->
-      P.(manifest_item ~a:[a_id id; a_href path; a_mediatype mime] ())
+      P.(
+        manifest_item
+          ~a:[a_id id; a_href path; a_mediatype mime; a_properties ["nav"]]
+          () )
   | NavigationCenter (mime, id, path) ->
       P.(manifest_item ~a:[a_id id; a_href path; a_mediatype mime] ())
 

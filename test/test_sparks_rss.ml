@@ -95,6 +95,12 @@ let test_epub_archive () =
               check
                 (Zip.read_entry archive first = "application/epub+zip")
                 "EPUB mimetype entry should contain the standard media type" ;
+              let opf =
+                Zip.read_entry archive (Zip.find_entry archive "content.opf")
+              in
+              check
+                (contains opf "properties=\"nav\"")
+                "The navigation document must be identified in the OPF manifest" ;
               List.iter
                 (fun name ->
                   ignore (Zip.find_entry archive name) )
