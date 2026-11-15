@@ -56,7 +56,7 @@ let download_image url =
 
 let download_and_swap_images ?base_url html_images =
   Lwt.map (List.filter_map Fun.id)
-    (Lwt_list.map_p
+    (Lwt_list.map_s
     (fun html_img ->
       match Soup.attribute "src" html_img with
       | None ->

@@ -2,7 +2,7 @@ open Lwt.Syntax
 
 let print_usage () =
   Printf.eprintf
-    "Usage: sparks_rss [-o OUTPUT.epub] FEED_URL [FEED_URL ...]\n\
+    "Usage: sparks_rss [-o OUTPUT.epub] [-j ARTICLES] FEED_URL [FEED_URL ...]\n\
      Fetch RSS feeds, download their linked articles and create an EPUB.\n"
 
 let usage_error () =
@@ -10,22 +10,30 @@ let usage_error () =
   exit 2
 
 let parse_args args =
-  let rec loop output urls = function
+  let rec loop output jobs urls = function
     | [] ->
-        (output, List.rev urls)
+        (output, jobs, List.rev urls)
     | ("-h" | "--help") :: _ ->
         print_usage () ;
         exit 0
     | ("-o" | "--output") :: path :: tail ->
-        loop path urls tail
+        loop path jobs urls tail
     | ("-o" | "--output") :: [] ->
         usage_error ()
+    | ("-j" | "--jobs") :: value :: tail ->
+        let jobs =
+          try int_of_string value with Failure _ -> usage_error ()
+        in
+        if jobs < 1 then usage_error () ;
+        loop output jobs urls tail
+    | ("-j" | "--jobs") :: [] ->
+        usage_error ()
     | url :: tail ->
-        loop output (url :: urls) tail
+        loop output jobs (url :: urls) tail
   in
-  let output, urls = loop "sparks-rss.epub" [] args in
+  let output, jobs, urls = loop "sparks-rss.epub" 4 [] args in
   if urls = [] then usage_error () ;
-  (output, urls)
+  (output, jobs, urls)
 
 let normalized_summary article =
   match article.Sparks_rss.Syndications.description with
@@ -78,7 +86,7 @@ let write_article pub article (xhtml, images) =
       Sparks_rss.Epub3.save_support_doc pub path (epub_mimetype mimetype) content )
     pub images
 
-let run output feed_urls =
+let run output jobs feed_urls =
   let articles =
     List.concat_map
       (fun feed_url ->
@@ -91,7 +99,10 @@ let run output feed_urls =
       feed_urls
   in
   if articles = [] then failwith "The supplied feeds contained no linked articles" ;
-  let processed = Lwt_main.run (Lwt_list.map_p fetch_article articles) in
+  let processed =
+    Lwt_main.run
+      (Sparks_rss.Bounded.map_p ~max_concurrent:jobs fetch_article articles)
+  in
   let publication_id =
     Sparks_rss.Epub3.Uuid (Sparks_rss.Uuid.uuid4 ())
   in
@@ -104,8 +115,8 @@ let run output feed_urls =
 
 let () =
   try
-    let output, feed_urls = parse_args (List.tl (Array.to_list Sys.argv)) in
-    run output feed_urls
+    let output, jobs, feed_urls = parse_args (List.tl (Array.to_list Sys.argv)) in
+    run output jobs feed_urls
   with exn ->
     Printf.eprintf "sparks_rss: %s\n" (Printexc.to_string exn) ;
     exit 1
