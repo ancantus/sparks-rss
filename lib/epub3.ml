@@ -286,7 +286,8 @@ let make_meta_inf pub opf_path =
   ocf_container opf_path |> write_ocf_container pub container_path
 
 let make_mimetype_file pub =
-  Zip.add_entry "application/epub+zip" pub.archive "mimetype"
+  (* EPUB requires this to be the first ZIP entry and stored verbatim. *)
+  Zip.add_entry "application/epub+zip" pub.archive ~level:0 "mimetype"
 
 let make_navpoints docs =
   let rec find_navpoints l d =
@@ -350,8 +351,8 @@ let open_out_pub ~unique_id:uuid ~title ~ln:lang
     ; content= []
     ; doc_count= 0 }
   in
-  make_meta_inf pub package_path ;
   make_mimetype_file pub ;
+  make_meta_inf pub package_path ;
   pub
 
 let close_pub pub =

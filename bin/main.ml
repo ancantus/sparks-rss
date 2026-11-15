@@ -1,74 +1,111 @@
-(*let test_url =
-  Uri.of_string "https://www.scrapingbee.com/blog/ocaml-web-scraping/"*)
+open Lwt.Syntax
 
-let webdriver_port = 4444
+let print_usage () =
+  Printf.eprintf
+    "Usage: sparks_rss [-o OUTPUT.epub] FEED_URL [FEED_URL ...]\n\
+     Fetch RSS feeds, download their linked articles and create an EPUB.\n"
 
-let () =
+let usage_error () =
+  print_usage () ;
+  exit 2
+
+let parse_args args =
+  let rec loop output urls = function
+    | [] ->
+        (output, List.rev urls)
+    | ("-h" | "--help") :: _ ->
+        print_usage () ;
+        exit 0
+    | ("-o" | "--output") :: path :: tail ->
+        loop path urls tail
+    | ("-o" | "--output") :: [] ->
+        usage_error ()
+    | url :: tail ->
+        loop output (url :: urls) tail
+  in
+  let output, urls = loop "sparks-rss.epub" [] args in
+  if urls = [] then usage_error () ;
+  (output, urls)
+
+let normalized_summary article =
+  match article.Sparks_rss.Syndications.description with
+  | None ->
+      ""
+  | Some html ->
+      Sparks_rss.Spark.extract_article_text html
+
+let fetch_article article =
+  let title = article.Sparks_rss.Syndications.title in
+  let summary = normalized_summary article in
+  let url = Uri.to_string article.link in
+  let fallback () =
+    let xhtml =
+      Sparks_rss.Spark.make_article_xhtml ~title ~summary ~text:summary ~images:[]
+    in
+    Lwt.return (xhtml, [])
+  in
+  Lwt.catch
+    (fun () ->
+      let* response = Sparks_rss.Http.fetch_url url in
+      match response with
+      | Some (html, _) ->
+          Sparks_rss.Spark.extract_article ~title ~summary ~url html
+      | None ->
+          fallback () )
+    (fun _ -> fallback ())
+
+let epub_mimetype = function
+  | "image/gif" ->
+      `Gif
+  | "image/jpeg" | "image/jpg" ->
+      `Jpeg
+  | "image/png" ->
+      `Png
+  | "image/svg+xml" ->
+      `Svg
+  | "image/webp" ->
+      `Webp
+  | mimetype ->
+      failwith ("Unsupported downloaded image type: " ^ mimetype)
+
+let write_article pub article (xhtml, images) =
+  let pub =
+    Sparks_rss.Epub3.save_xhtml_doc pub article.Sparks_rss.Syndications.title
+      xhtml
+  in
+  List.fold_left
+    (fun pub (path, mimetype, content) ->
+      Sparks_rss.Epub3.save_support_doc pub path (epub_mimetype mimetype) content )
+    pub images
+
+let run output feed_urls =
   let articles =
-    Sparks_rss.Syndications.from_file
-      "/home/restep/projects/sparks-rss/resources/rss_minimal"
+    List.concat_map
+      (fun feed_url ->
+        let uri = Uri.of_string feed_url in
+        match Uri.scheme uri with
+        | Some ("http" | "https") ->
+            Sparks_rss.Syndications.from_url uri
+        | _ ->
+            failwith ("Feed URL must use http or https: " ^ feed_url) )
+      feed_urls
   in
-  let links =
-    List.map (fun (a : Sparks_rss.Syndications.article) -> a.link) articles
+  if articles = [] then failwith "The supplied feeds contained no linked articles" ;
+  let processed = Lwt_main.run (Lwt_list.map_p fetch_article articles) in
+  let publication_id =
+    Sparks_rss.Epub3.Uuid (Sparks_rss.Uuid.uuid4 ())
   in
-  let parsed_links =
-    try
-      Some
-        (Lwt_main.run (Sparks_rss.Webdriver.fetch_sources webdriver_port links))
-    with Webdriver_cohttp_lwt_unix.Webdriver e ->
-      Printf.fprintf stderr "[FAIL] Webdriver error: %s\n%!"
-        (Webdriver_cohttp_lwt_unix.Error.to_string e) ;
-      Printexc.print_backtrace stderr ;
-      Printf.fprintf stderr "\n%!" ;
-      None
+  let publication =
+    Sparks_rss.Epub3.open_out_pub ~unique_id:publication_id
+      ~title:"Spark RSS Digest" ~ln:"en" ~opt_meta:[] output
   in
-  let rss_content =
-    Lwt_main.run
-      (Lwt_list.map_p Sparks_rss.Spark.parse_fx_reader (Option.get parsed_links))
-  in
-  List.iter (fun (content, _) -> print_endline content) rss_content
-
-(*
-let src = "/home/restep/projects/sparks-rss/resources/frankenstein_epub/"
-
-let docs =
-  [ ("index_split_003.html", "tolower() with AVX-512 - Tony Finch")
-  ; ("index_split_004.html", "ps aux without forking") ]
-
-let support =
-  [ ("images/00089.jpg", `Jpeg)
-  ; ("page_styles.css", `Css)
-  ; ("stylesheet.css", `Css) ]
-
-let cover_img = ("cover.jpeg", `Jpeg)
-
-let load_file path =
-  let file = open_in_bin (src ^ path) in
-  let s = really_input_string file (in_channel_length file) in
-  close_in file ; s
-
-let save_document pub d =
-  let path, title = d in
-  load_file path |> Sparks_rss.Epub3.save_xhtml_doc pub title
-
-let save_support pub s =
-  let path, mimetype = s in
-  Sparks_rss.Epub3.save_support_doc pub path mimetype (load_file path)
-
-let save_cover_image pub i =
-  let path, mimetype = i in
-  Sparks_rss.Epub3.save_cover_image pub path mimetype (load_file path)
-
-let () =
-  let pub_id = Sparks_rss.(Epub3.Uuid (Uuid.uuid4 ())) in
-  let pub_title = "Hacker News Test EPUB" in
-  let fold_pub f list pub = List.fold_left f pub list in
-  Sparks_rss.Epub3.open_out_pub ~unique_id:pub_id ~title:pub_title ~ln:"en"
-    ~opt_meta:[ModifiedDatetime "2024-09-13T03:20:08Z"]
-    "/tmp/test.epub"
-  |> fold_pub save_document docs
-  |> fold_pub save_support support
-  |> (fun p -> save_cover_image p cover_img)
+  List.fold_left2 write_article publication articles processed
   |> Sparks_rss.Epub3.close_pub
 
-*)
+let () =
+  try
+    let output, feed_urls = parse_args (List.tl (Array.to_list Sys.argv)) in
+    run output feed_urls
+  with exn ->
+    Printf.eprintf "sparks_rss: %s\n" (Printexc.to_string exn) ;
+    exit 1

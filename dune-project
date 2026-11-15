@@ -19,7 +19,16 @@
  (name sparks_rss)
  (synopsis "A short synopsis")
  (description "A longer description")
- (depends ocaml dune lambdasoup ezcurl rss tyxml camlzip)
+ (depends
+  ocaml
+  dune
+  lambdasoup
+  ezcurl
+  rss
+  tyxml
+  camlzip
+  lwt_ssl
+  webdriver_cohttp-lwt-unix)
  (tags
   (topics "to describe" your project)))
 
