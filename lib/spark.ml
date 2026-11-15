@@ -88,7 +88,14 @@ let parse_fx_reader ?base_url (node : Soup.soup Soup.node) =
   Lwt.return ((header |> Soup.to_string) ^ (content |> Soup.to_string), images)
 
 let normalize_text text =
-  String.split_on_char ' ' (String.map (function '\n' | '\r' | '\t' -> ' ' | c -> c) text)
+  text |> String.to_seq
+  |> Seq.filter
+    (fun c ->
+      let code = Char.code c in
+      code = 0x09 || code = 0x0A || code = 0x0D || code >= 0x20 )
+  |> String.of_seq
+  |> String.map (function '\n' | '\r' | '\t' -> ' ' | c -> c)
+  |> String.split_on_char ' '
   |> List.filter (fun part -> part <> "")
   |> String.concat " "
 

@@ -34,7 +34,7 @@ module Make (Xml : Xml_sigs.T) = struct
     | `Jpeg ->
         "image/jpeg"
     | `Png ->
-        "image/gif"
+        "image/png"
     | `Svg ->
         "image/svg+xml"
     | `Webp ->

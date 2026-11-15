@@ -54,6 +54,9 @@ let test_article_xhtml () =
       "<html><body><article><h1>Title</h1><p>Readable text</p><script>ignore me</script></article></body></html>"
   in
   check (text = "Title Readable text") "Article text should omit script content" ;
+  check
+    (Sparks_rss.Spark.normalize_text "valid\016text" = "validtext")
+    "Article text should discard XML-invalid control characters" ;
   let xhtml =
     Sparks_rss.Spark.make_article_xhtml ~title:"A & B" ~summary:"Summary"
       ~text:"Body" ~images:[]
@@ -96,6 +99,8 @@ let test_epub_archive () =
       Sparks_rss.Epub3.save_xhtml_doc pub "Article"
         (Sparks_rss.Spark.make_article_xhtml ~title:"Article" ~summary:""
            ~text:"Hello" ~images:[] )
+      |> fun pub ->
+      Sparks_rss.Epub3.save_support_doc pub "images/test.png" `Png "png data"
       |> Sparks_rss.Epub3.close_pub ;
       let archive = Zip.open_in path in
       Fun.protect
@@ -118,6 +123,9 @@ let test_epub_archive () =
               check
                 (contains opf "properties=\"nav\"")
                 "The navigation document must be identified in the OPF manifest" ;
+              check
+                (contains opf "images/test.png" && contains opf "image/png")
+                "PNG manifest items must be declared as image/png" ;
               List.iter
                 (fun name ->
                   ignore (Zip.find_entry archive name) )
