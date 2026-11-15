@@ -17,6 +17,8 @@ depends: [
   "rss"
   "tyxml"
   "camlzip"
+  "lwt_ssl"
+  "webdriver_cohttp-lwt-unix"
   "odoc" {with-doc}
 ]
 build: [
