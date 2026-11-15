@@ -67,6 +67,23 @@ let test_article_xhtml () =
     (Xmlm.input_doc_tree ~el:(fun _ _ -> ()) ~data:(fun _ -> ())
        (Xmlm.make_input (`String (0, xhtml))) )
 
+let test_bounded_parallelism () =
+  let active = ref 0 and maximum = ref 0 in
+  let results =
+    Lwt_main.run
+      (Sparks_rss.Bounded.map_p ~max_concurrent:2
+         (fun value ->
+           incr active ;
+           maximum := max !maximum !active ;
+           let open Lwt.Syntax in
+           let* () = Lwt_unix.sleep 0.001 in
+           decr active ;
+           Lwt.return (value * 2) )
+         [0; 1; 2; 3; 4] )
+  in
+  check (results = [0; 2; 4; 6; 8]) "Bounded mapping should preserve order" ;
+  check (!maximum = 2) "Bounded mapping should respect its concurrency limit"
+
 let test_epub_archive () =
   let path = Filename.temp_file "sparks-rss-test-" ".epub" in
   Fun.protect
@@ -110,4 +127,5 @@ let () =
   test_rss_parser () ;
   test_image_handling () ;
   test_article_xhtml () ;
+  test_bounded_parallelism () ;
   test_epub_archive ()
