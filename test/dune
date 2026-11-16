@@ -1,6 +1,6 @@
 (test
  (name test_sparks_rss)
- (libraries sparks_rss camlzip lwt.unix lambdasoup xmlm))
+ (libraries sparks_rss zipc lwt.unix lambdasoup xmlm))
 
 (test
  (name test_epubcheck)
