@@ -35,4 +35,5 @@ let () =
         (fun () ->
           make_epub path ;
           let status = Sys.command (command ^ " " ^ quote path) in
-          if status <> 0 then failwith "EPUBCheck rejected the generated EPUB" )
+          if status <> 0 then failwith "EPUBCheck rejected the generated EPUB"
+          )
