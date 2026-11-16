@@ -24,7 +24,7 @@ type pub_metadata =
   ; package_path: string }
 
 type publication =
-  { archive: Zip.out_file  (** in progress epub zip file *)
+  { archive: Zipc.t  (** in progress epub zip archive *)
   ; output_path: string
   ; metadata: pub_metadata
   ; content: content list

@@ -30,15 +30,37 @@ type pub_metadata =
   ; package_path: string }
 
 type publication =
-  { archive: Zip.out_file
+  { archive: Zipc.t  (** in progress epub zip archive *)
   ; output_path: string
   ; metadata: pub_metadata
   ; content: content list
   ; doc_count: int }
 
+let make_archive_member path data ~compression =
+  let file =
+    match compression data with
+    | Ok file ->
+        file
+    | Error msg ->
+        failwith ("Unable to compress epub archive member " ^ path ^ ": " ^ msg)
+  in
+  match Zipc.Member.make ~path (Zipc.Member.File file) with
+  | Ok member ->
+      member
+  | Error msg ->
+      failwith ("Unable to create epub archive member " ^ path ^ ": " ^ msg)
+
+(* Deflate everything but the mimetype entry: the EPUB OCF container requires
+   that entry to be first and stored verbatim. *)
+let write_file pub path data =
+  let member =
+    make_archive_member path data
+      ~compression:Zipc.File.deflate_of_binary_string
+  in
+  {pub with archive= Zipc.add member pub.archive}
+
 let write_xml_like_file xml_pp pub path doc =
-  let data = Format.asprintf "%a" xml_pp doc in
-  Zip.add_entry data pub.archive path
+  write_file pub path (Format.asprintf "%a" xml_pp doc)
 
 let write_ocf_container = write_xml_like_file (PC.pp ~indent:false ())
 
@@ -165,18 +187,17 @@ let add_content ?(rev = false) pub newc =
   ; content= (if rev then pub.content @ [newc] else newc :: pub.content)
   ; doc_count= 1 + pub.doc_count }
 
-let save_epub_content (pub : publication) path data =
-  Zip.add_entry data pub.archive path
+let save_epub_content (pub : publication) path data = write_file pub path data
 
 let save_xhtml_doc (pub : publication) title data =
   let doc_id = Printf.sprintf "id%05d" pub.doc_count in
   let doc_path = Printf.sprintf "index_count_%03d.xhtml" pub.doc_count in
-  save_epub_content pub doc_path data ;
+  let pub = save_epub_content pub doc_path data in
   add_content pub (Document ((`Xhtml, doc_id, doc_path), title))
 
 let save_support_doc (pub : publication) doc_path mimetype data =
   let doc_id = Printf.sprintf "id%05d" pub.doc_count in
-  save_epub_content pub doc_path data ;
+  let pub = save_epub_content pub doc_path data in
   add_content pub (SupportDocument (mimetype, doc_id, doc_path))
 
 let save_cover_image (pub : publication) doc_path mimetype data =
@@ -196,7 +217,7 @@ let save_cover_image (pub : publication) doc_path mimetype data =
         failwith "Expected image: found nonimage MIME type"
   in
   assert_image_mimetype mimetype ;
-  save_epub_content pub doc_path data ;
+  let pub = save_epub_content pub doc_path data in
   add_content pub (CoverImage (mimetype, doc_id, doc_path))
 
 let build_manifest_item = function
@@ -286,96 +307,18 @@ let make_ocf_package pub =
       None (* Deprecated bindings element *)
       [] (* Collection elements *) )
 
-let make_meta_inf pub opf_path =
+let make_meta_inf opf_path pub =
   let container_path = "META-INF/container.xml" in
   ocf_container opf_path |> write_ocf_container pub container_path
 
 let make_mimetype_file pub =
-  (* EPUB requires this to be the first ZIP entry and stored verbatim. *)
-  Zip.add_entry "application/epub+zip" pub.archive ~level:0 "mimetype"
-
-let read_u16 data offset =
-  Char.code (Bytes.get data offset)
-  lor (Char.code (Bytes.get data (offset + 1)) lsl 8)
-
-let read_u32 data offset =
-  Int64.logor (Int64.of_int (read_u16 data offset))
-    (Int64.shift_left (Int64.of_int (read_u16 data (offset + 2))) 16)
-
-let write_u16 data offset value =
-  Bytes.set data offset (Char.chr (value land 0xFF)) ;
-  Bytes.set data (offset + 1) (Char.chr ((value lsr 8) land 0xFF))
-
-let write_u32 data offset value =
-  write_u16 data offset (Int64.to_int value land 0xFFFF) ;
-  write_u16 data (offset + 2)
-    (Int64.to_int (Int64.shift_right_logical value 16) land 0xFFFF)
-
-let has_signature data offset signature =
-  Int64.equal (read_u32 data offset) signature
-
-let find_eocd data =
-  let rec find offset lower_bound =
-    if offset < lower_bound then failwith "Invalid ZIP: end record not found"
-    else if has_signature data offset 0x06054b50L then offset
-    else find (offset - 1) lower_bound
+  (* EPUB requires this to be the first ZIP entry and stored verbatim. Zipc
+     encodes the "mimetype" member first by default. *)
+  let member =
+    make_archive_member "mimetype" "application/epub+zip"
+      ~compression:Zipc.File.stored_of_binary_string
   in
-  find (Bytes.length data - 22) (max 0 (Bytes.length data - 65_557))
-
-(* Camlzip reserves an unused Zip64 extra field in every local file header.
-   EPUB forbids extra fields on its first, stored `mimetype` entry. *)
-let remove_mimetype_extra_field path =
-  let channel = open_in_bin path in
-  let data = Bytes.of_string (really_input_string channel (in_channel_length channel)) in
-  close_in channel ;
-  if not (has_signature data 0 0x04034b50L) then
-    failwith "Invalid ZIP: local header for mimetype not found" ;
-  let filename_length = read_u16 data 26 in
-  let extra_length = read_u16 data 28 in
-  let filename = Bytes.sub_string data 30 filename_length in
-  if filename <> "mimetype" then failwith "Invalid EPUB: mimetype is not first" ;
-  if extra_length = 0 then ()
-  else if
-    extra_length <> 20
-    || read_u16 data (30 + filename_length) <> 0
-    || read_u16 data (32 + filename_length) <> 16
-  then failwith "Unexpected ZIP extra field on EPUB mimetype entry"
-  else (
-    let extra_start = 30 + filename_length in
-    let removed = extra_length in
-    let patched = Bytes.create (Bytes.length data - removed) in
-    Bytes.blit data 0 patched 0 extra_start ;
-    Bytes.blit data (extra_start + removed) patched extra_start
-      (Bytes.length data - extra_start - removed) ;
-    write_u16 patched 28 0 ;
-    let eocd = find_eocd patched in
-    let cd_offset = Int64.to_int (read_u32 patched (eocd + 16)) - removed in
-    let entry_count = read_u16 patched (eocd + 10) in
-    let rec update_entries offset remaining =
-      if remaining > 0 then (
-        if not (has_signature patched offset 0x02014b50L) then
-          failwith "Invalid ZIP: central directory entry not found" ;
-        let name_length = read_u16 patched (offset + 28) in
-        let extra_length = read_u16 patched (offset + 30) in
-        let comment_length = read_u16 patched (offset + 32) in
-        let local_offset = Int64.to_int (read_u32 patched (offset + 42)) in
-        if local_offset > 0 then
-          write_u32 patched (offset + 42)
-            (Int64.of_int (local_offset - removed)) ;
-        update_entries
-          (offset + 46 + name_length + extra_length + comment_length)
-          (remaining - 1) )
-    in
-    update_entries cd_offset entry_count ;
-    write_u32 patched (eocd + 16) (Int64.of_int cd_offset) ;
-    let temp = Filename.temp_file ~temp_dir:(Filename.dirname path) "epub-" ".zip" in
-    Fun.protect
-      ~finally:(fun () -> if Sys.file_exists temp then Sys.remove temp)
-      (fun () ->
-        let output = open_out_bin temp in
-        output_bytes output patched ;
-        close_out output ;
-        Sys.rename temp path ) )
+  {pub with archive= Zipc.add member pub.archive}
 
 let make_navpoints docs =
   let rec find_navpoints l d =
@@ -418,7 +361,7 @@ let build_ncx pub =
       [] (* Nav List *) )
 
 let make_ncx ?(path = "toc.ncx") pub =
-  build_ncx pub |> write_ncx pub path ;
+  let pub = build_ncx pub |> write_ncx pub path in
   NavigationCenter (`Ncx, "ncx", path) |> add_content pub
 
 let make_toc pub =
@@ -426,7 +369,7 @@ let make_toc pub =
     Ocf_nav.make_nav ~title:"Table of Contents" ~ln:pub.metadata.primary_lang
       pub.content
   in
-  write_xhtml pub path nav_doc ;
+  let pub = write_xhtml pub path nav_doc in
   TableOfContents (`Xhtml, "toc", path) |> add_content ~rev:true pub
 
 let open_out_pub ~unique_id:uuid ~title ~ln:lang
@@ -440,28 +383,40 @@ let open_out_pub ~unique_id:uuid ~title ~ln:lang
   in
   let opt_meta =
     let existing =
-      List.find_opt (function ModifiedDatetime _ -> true | _ -> false) opt_meta
+      List.find_opt
+        (function ModifiedDatetime _ -> true | _ -> false)
+        opt_meta
     in
     Option.value existing ~default:modified_datetime
     :: List.filter (function ModifiedDatetime _ -> false | _ -> true) opt_meta
   in
   let package_path = "content.opf" in
   let pub =
-    { archive= Zip.open_out dst
+    { archive= Zipc.empty
     ; output_path= dst
     ; metadata=
         {unique_id= uuid; title; primary_lang= lang; opt_meta; package_path}
     ; content= []
     ; doc_count= 0 }
   in
-  make_mimetype_file pub ;
-  make_meta_inf pub package_path ;
-  pub
+  make_mimetype_file pub |> make_meta_inf package_path
 
 let close_pub pub =
   make_ncx pub |> make_toc
   |> (* Table of contents dynamically created from all the documents *)
-  make_ocf_package
-  |> write_ocf_package pub pub.metadata.package_path ;
-  Zip.close_out pub.archive ;
-  remove_mimetype_extra_field pub.output_path
+  fun pub ->
+  let pub =
+    make_ocf_package pub |> write_ocf_package pub pub.metadata.package_path
+  in
+  (* Zipc writes the stored mimetype member first to satisfy the EPUB OCF
+     container ordering constraint. *)
+  let encoded =
+    match Zipc.to_binary_string pub.archive with
+    | Ok encoded ->
+        encoded
+    | Error msg ->
+        failwith ("Unable to encode epub zip archive: " ^ msg)
+  in
+  let output = open_out_bin pub.output_path in
+  output_string output encoded ;
+  close_out output
