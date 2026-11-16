@@ -43,19 +43,77 @@ opam pin add -y webdriver_cohttp-lwt-unix git+https://github.com/art-w/ocaml-web
 opam install . --deps-only -y
 ```
 
+#### Host notes (this machine)
+
+The libcurl headers used by this host are installed user-locally in
+`~/.local/ocaml-deps/usr` (no `libcurl-devel` RPM). They are not on the
+default pkg-config search path, so `opam install ezcurl` (which builds the
+`curl` bindings) fails with *"Package libcurl was not found in the pkg-config
+search path"* unless the prefix is exported first:
+
+```sh
+export PKG_CONFIG_PATH="$HOME/.local/ocaml-deps/usr/lib64/pkgconfig:$PKG_CONFIG_PATH"
+```
+
+Add that line to `~/.bashrc` before creating or repairing the switch. For
+EPUB validation, EPUBCheck is installed at `~/opt/epubcheck/epubcheck.jar`
+(see [EPUB validation](#epub-validation)); geckodriver lives in
+`~/.local/bin` (see [reader mode extraction](#firefox-reader-mode-extraction-recommended)).
+
 Build and run from the activated switch. Pass one or more RSS feed URLs; the
-CLI downloads linked article pages over HTTP, converts their text and images,
-and writes an EPUB. `--jobs` controls how many articles are processed at once
-(default: 4). Pages that need JavaScript to render content may produce only
-their RSS summary.
+CLI renders each linked article with Firefox reader mode (via a running
+WebDriver server) when available and plain HTTP otherwise, then writes an
+EPUB. `--jobs` controls how many articles are processed at once (default: 4).
 
 ```sh
 make build
 dune exec sparks_rss -- --output digest.epub --jobs 4 FEED_URL [FEED_URL ...]
 ```
 
-The Firefox WebDriver module remains available for future extraction work, but
-the CLI does not require a browser or WebDriver server.
+### Firefox reader mode extraction (recommended)
+
+Article extraction is driven by the Firefox WebDriver
+(`lib/webdriver.ml`): the browser loads the article page and the vendored
+[@mozilla/readability](https://github.com/mozilla/readability) engine — the
+same engine Firefox reader mode uses — parses it into a clean article
+document. Note the WebDriver protocol forbids navigating directly to
+`about:reader` URLs, so the engine is executed inside the loaded page
+instead; the extraction quality is the same as reader mode.
+
+Host setup (Fedora):
+
+```sh
+# 1. Firefox (already installed on most Fedora images)
+sudo dnf install firefox
+
+# 2. geckodriver 0.36+; no root needed if you install it into ~/.local/bin
+mkdir -p ~/.local/bin
+curl -fsSL -o /tmp/geckodriver.tar.gz \
+  https://github.com/mozilla/geckodriver/releases/download/v0.37.1/geckodriver-v0.37.1-linux64.tar.gz
+tar xzf /tmp/geckodriver.tar.gz -C ~/.local/bin geckodriver
+geckodriver --version
+
+# 3. Start the driver before building an EPUB (default port 4444)
+geckodriver --port 4444 &
+```
+
+`~/.local/bin` is on `PATH` by default on Fedora. If geckodriver is not
+reachable, the CLI prints a warning per article and falls back to plain HTTP
+extraction, so nothing fails outright. Use `-w PORT` to select another port.
+geckodriver supports a single session at a time; the CLI serialises the
+webdriver fetches internally.
+
+#### Updating the vendored readability engine
+
+`vendor/readability/Readability.js` is embedded into the binary at build
+time. Refresh it with:
+
+```sh
+make update-readability            # newest upstream release
+make update-readability TAG=0.6.0  # a specific release
+```
+
+See `vendor/readability/README.md` for details and licensing.
 
 ### EPUB validation
 
@@ -63,7 +121,12 @@ The integration test runs EPUBCheck when it is installed and skips otherwise.
 On Ubuntu, install the packaged validator with `sudo apt install epubcheck`.
 EPUBCheck is not in the enabled Fedora repositories on this machine; use the
 [official EPUBCheck distribution](https://w3c.github.io/epubcheck/docs/installation/)
-and set `EPUBCHECK_JAR` to its `epubcheck.jar` path (Java is required).
+and set `EPUBCHECK_JAR` to its `epubcheck.jar` path (Java is required). On
+this host the distribution is installed at `~/opt/epubcheck/epubcheck.jar`:
+
+```sh
+EPUBCHECK_JAR=~/opt/epubcheck/epubcheck.jar dune runtest
+```
 
 Run the ordinary test suite with:
 
