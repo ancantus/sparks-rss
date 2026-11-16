@@ -14,7 +14,8 @@ let rec get ?(redirects = 5) uri =
     match location with
     | Some next ->
         let* () = Cohttp_lwt.Body.drain_body body in
-        get ~redirects:(redirects - 1) (Uri.resolve "https" uri (Uri.of_string next))
+        get ~redirects:(redirects - 1)
+          (Uri.resolve "https" uri (Uri.of_string next))
     | None ->
         Lwt.return (resp, body)
   else Lwt.return (resp, body)
