@@ -1,6 +1,5 @@
 open Soup.Infix
 open Lwt.Syntax
-
 module HP = Xml_print.Make_typed_fmt (Tyxml_xml) (Tyxml.Html)
 
 let select_images node = Soup.select "img" node |> Soup.to_list
@@ -38,7 +37,8 @@ let resolve_image_url ?base_url src =
       Some (Uri.to_string uri)
   | _ ->
       Option.map
-        (fun base -> Uri.resolve "https" (Uri.of_string base) uri |> Uri.to_string)
+        (fun base ->
+          Uri.resolve "https" (Uri.of_string base) uri |> Uri.to_string )
         base_url
 
 let download_image url =
@@ -57,26 +57,23 @@ let download_image url =
 let download_and_swap_images ?base_url html_images =
   Lwt.map (List.filter_map Fun.id)
     (Lwt_list.map_s
-    (fun html_img ->
-      match Soup.attribute "src" html_img with
-      | None ->
-          Soup.delete html_img ;
-          Lwt.return None
-      | Some src -> (
-        match resolve_image_url ?base_url src with
-        | None ->
-            Soup.delete html_img ;
-            Lwt.return None
-        | Some url ->
-            let* result = download_image url in
-            match result with
-            | Some (path, mimetype, content) ->
-                update_image_url path html_img ;
-                Lwt.return (Some (path, mimetype, content))
-            | None ->
-                Soup.delete html_img ;
-                Lwt.return None ) )
-    html_images)
+       (fun html_img ->
+         match Soup.attribute "src" html_img with
+         | None ->
+             Soup.delete html_img ; Lwt.return None
+         | Some src -> (
+           match resolve_image_url ?base_url src with
+           | None ->
+               Soup.delete html_img ; Lwt.return None
+           | Some url -> (
+               let* result = download_image url in
+               match result with
+               | Some (path, mimetype, content) ->
+                   update_image_url path html_img ;
+                   Lwt.return (Some (path, mimetype, content))
+               | None ->
+                   Soup.delete html_img ; Lwt.return None ) ) )
+       html_images )
 
 let parse_fx_reader ?base_url (node : Soup.soup Soup.node) =
   let header = node $ ".header" in
@@ -89,10 +86,9 @@ let parse_fx_reader ?base_url (node : Soup.soup Soup.node) =
 
 let normalize_text text =
   text |> String.to_seq
-  |> Seq.filter
-    (fun c ->
-      let code = Char.code c in
-      code = 0x09 || code = 0x0A || code = 0x0D || code >= 0x20 )
+  |> Seq.filter (fun c ->
+         let code = Char.code c in
+         code = 0x09 || code = 0x0A || code = 0x0D || code >= 0x20 )
   |> String.of_seq
   |> String.map (function '\n' | '\r' | '\t' -> ' ' | c -> c)
   |> String.split_on_char ' '
@@ -101,8 +97,67 @@ let normalize_text text =
 
 let remove_noncontent_nodes soup =
   List.iter
-    (fun selector -> List.iter Soup.delete (Soup.select selector soup |> Soup.to_list))
-    ["script"; "style"; "noscript"]
+    (fun selector ->
+      List.iter Soup.delete (Soup.select selector soup |> Soup.to_list) )
+    [ "script"
+    ; "style"
+    ; "noscript"
+    ; (* Unsupported embedded media: their fallback text would otherwise leak
+         into the extracted article. Linked media are stubbed out instead. *)
+      "video"
+    ; "audio"
+    ; "embed"
+    ; "iframe"
+    ; "object" ]
+
+(* Unsupported content is replaced by a placeholder page for the time being. *)
+type stub_kind = Pdf | Video
+
+let is_pdf_uri uri =
+  String.ends_with ~suffix:".pdf" (String.lowercase_ascii (Uri.path uri))
+
+let video_file_extensions = [".mp4"; ".webm"; ".m4v"; ".mov"; ".ogv"; ".avi"]
+
+let video_hosts = ["youtube.com"; "youtu.be"; "vimeo.com"; "dailymotion.com"]
+
+let is_video_uri uri =
+  let path = String.lowercase_ascii (Uri.path uri) in
+  let host = Option.map String.lowercase_ascii (Uri.host uri) in
+  List.exists
+    (fun ext -> String.ends_with ~suffix:ext path)
+    video_file_extensions
+  ||
+  match host with
+  | None ->
+      false
+  | Some host ->
+      List.exists
+        (fun known ->
+          host = known || String.ends_with ~suffix:("." ^ known) host )
+        video_hosts
+
+let stub_kind_of_uri uri =
+  if is_pdf_uri uri then Some Pdf
+  else if is_video_uri uri then Some Video
+  else None
+
+let stub_kind_of_mimetype mimetype =
+  match normalize_mimetype mimetype with
+  | "application/pdf" ->
+      Some Pdf
+  | mimetype ->
+      if String.length mimetype >= 6 && String.sub mimetype 0 6 = "video/" then
+        Some Video
+      else None
+
+let reader_page_contents soup =
+  (* Firefox reader mode embeds the parsed article in a readability content
+     node; fall back to the whole document if it cannot be found. *)
+  match Soup.select_one "[id^=readability-page-]" soup with
+  | Some node ->
+      Soup.to_string node
+  | None ->
+      Soup.to_string soup
 
 let select_article_root soup =
   let rec first_match = function
@@ -132,9 +187,7 @@ let extract_article_text html =
 let make_article_xhtml ~title ~summary ~text ~images =
   let module H = Tyxml.Html in
   let image_elements =
-    List.map
-      (fun (path, _, _) -> H.img ~src:path ~alt:"" ())
-      images
+    List.map (fun (path, _, _) -> H.img ~src:path ~alt:"" ()) images
   in
   let body =
     H.body
@@ -153,6 +206,18 @@ let make_article_xhtml ~title ~summary ~text ~images =
       body
   in
   Format.asprintf "%a" (HP.pp ~indent:true ()) doc
+
+let make_stub_xhtml ~title ~kind url =
+  let description =
+    match kind with Pdf -> "PDF document" | Video -> "video"
+  in
+  make_article_xhtml ~title ~summary:""
+    ~text:
+      (Printf.sprintf
+         "This article is a %s, which cannot be embedded in this edition yet. \
+          It is available at: %s"
+         description url )
+    ~images:[]
 
 let extract_article ~title ~summary ~url html =
   let soup = Soup.parse html in
