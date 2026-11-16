@@ -6,4 +6,21 @@
   ocf_xml_sig
   ocf_package_sig
   ocf_ncx_sig)
- (libraries rss ezcurl webdriver_cohttp-lwt-unix lambdasoup tyxml zipc lwt_ssl unix))
+ (libraries
+  rss
+  ezcurl
+  webdriver_cohttp-lwt-unix
+  lambdasoup
+  tyxml
+  zipc
+  yojson
+  lwt_ssl
+  unix))
+
+(rule
+ (target readability_js.ml)
+ (deps gen_readability_js.sh ../vendor/readability/Readability.js)
+ (action
+  (with-stdout-to
+   %{target}
+   (run sh gen_readability_js.sh ../vendor/readability/Readability.js))))

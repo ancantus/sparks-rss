@@ -1,7 +1,14 @@
 module W = Webdriver_cohttp_lwt_unix
 
+val describe_error : exn -> string option
+(* [describe_error exn] is a human readable reason when [exn] originates from a
+   WebDriver command failure, and [None] otherwise. *)
+
 val action_fetch_reader : Uri.t -> Soup.soup Soup.node option W.cmd
-(* [action_fetch_reader url] webdriver action to fetch a URL's HTML source using firefox reader *)
+(* [action_fetch_reader url] webdriver action to extract an article's HTML using
+   the vendored @mozilla/readability engine (see vendor/readability), the same
+   engine Firefox reader mode uses. Returns [None] for pages the engine cannot
+   parse. *)
 
 val action_fetch_source : Uri.t -> Soup.soup Soup.node option W.cmd
 (* [action_fetch_reader url] webdriver action to fetch a URL's HTML source using firefox *)

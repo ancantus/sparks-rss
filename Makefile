@@ -1,7 +1,7 @@
 .PHONY: default
 default: build
 
-.PHONY: default format build clean doc epubcheck
+.PHONY: default format build clean doc epubcheck update-readability
 build:
 	dune build
 
@@ -16,3 +16,6 @@ doc:
 
 epubcheck:
 	dune exec test/test_epubcheck.exe
+
+update-readability:
+	tools/update-readability.sh $(TAG)
