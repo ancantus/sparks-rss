@@ -1,0 +1,98 @@
+name: OCaml Build & Lint
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  OPAM_ENV: ""
+  OCAML_VERSION: '5.5'
+
+jobs:
+  format-and-build:
+    name: Format & Build Check
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        
+      - name: Set up OCaml with opam
+        uses: ocaml/setup-ocaml@v3.9.1
+        with:
+          ocaml-version: ${{ env.OCAML_VERSION }}
+          opam-version: '2.0'
+        
+      - name: Install opam packages
+        run: |
+          eval $(opam env)
+          opam sync
+        
+      - name: Install format and lint tools
+        run: |
+          eval $(opam env)
+          opam install ocamlformat ocamloban ocamllint
+        
+      - name: Check file formatting with ocamlformat
+        id: format-check
+        run: |
+          eval $(opam env)
+          
+          find . -type f \( -name "*.ml" -o -name "*.mli" \) ! -path "./node_modules/*" ! -path "*/build/*" > /tmp/ml_files.txt
+          
+          if [ ! -s /tmp/ml_files.txt ]; then
+            echo "✓ No OCaml source files to check"
+            exit 0
+          fi
+          
+          set -e
+          while IFS= read -r file; do
+            if ocamlformat --diff "$file" > /dev/null 2>&1; then
+              echo "✓ Formatted: $file"
+            else
+              echo "✗ Formatting issue found in: $file"
+              exit 1
+            fi
+          done < /tmp/ml_files.txt
+      
+      - name: Run type checking with ocamloban
+        run: |
+          eval $(opam env)
+          set -e
+          
+          find . -type f \( -name "*.ml" -o -name "*.mli" \) ! -path "./node_modules/*" ! -path "*/build/*" > /tmp/ml_files.txt
+          
+          if [ ! -s /tmp/ml_files.txt ]; then
+            echo "Warning: No OCaml source files to type check"
+          else
+            while IFS= read -r file; do
+              if ! ocamloban "$file"; then
+                echo "✗ Type checking error found in: $file"
+                exit 1
+              fi
+            done < /tmp/ml_files.txt
+          
+            echo "✓ All type checks passed"
+          fi
+      
+      - name: Run linting with ocamllint
+        run: |
+          eval $(opam env)
+          set -e
+          
+          find . -type f \( -name "*.ml" -o -name "*.mli" \) ! -path "./node_modules/*" ! -path "*/build/*" > /tmp/ml_files.txt
+          
+          if [ ! -s /tmp/ml_files.txt ]; then
+            echo "Warning: No OCaml source files to lint"
+          else
+            while IFS= read -r file; do
+              if ! ocamllint "$file"; then
+                echo "✗ Linting error found in: $file"
+                exit 1
+              fi
+            done < /tmp/ml_files.txt
+          
+            echo "✓ All lint checks passed"
+          fi
