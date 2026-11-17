@@ -19,9 +19,9 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         
-      - name: Set up OCaml directly
+      - name: Set up OCaml with official opam
         run: |
-          sudo apt-get update && sudo apt-get install -y opam dune ocamloban ocamlformat
+          curl -fsSL https://raw.githubusercontent.com/ocaml/opam/master/bin/opam -o /usr/local/bin/opam && chmod +x /usr/local/bin/opam
           
           eval $(opam init --defer-sourcing)
           opam sync
