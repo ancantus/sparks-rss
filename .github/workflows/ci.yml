@@ -19,10 +19,13 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         
-      - name: Set up OCaml with opam
-        uses: ocaml/setup-ocaml@v3.9.1
-        with:
-          ocaml-version: ${{ env.OCAML_VERSION }}
+      - name: Set up OCaml directly
+        run: |
+          sudo apt-get update && sudo apt-get install -y opam dune ocamloban ocamlformat
+          
+          eval $(opam init --defer-sourcing)
+          opam sync
+          source ~/.opam/opam-init/init.sh
         
       - name: Install opam packages
         run: |
