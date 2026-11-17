@@ -1,4 +1,5 @@
 open Lwt.Syntax
+open List
 
 let print_usage () =
   Printf.eprintf
@@ -26,16 +27,17 @@ let parse_args args =
         usage_error ()
     | ("-w" | "--webdriver-port") :: value :: tail ->
         let port = try int_of_string value with Failure _ -> usage_error () in
-        if port < 0 then usage_error () ;
+        if port < 1 then usage_error () ;
         loop output jobs port urls tail
     | ("-w" | "--webdriver-port") :: [] ->
         usage_error ()
     | url :: tail ->
         loop output jobs port (url :: urls) tail
   in
-  (* [port 0] is a valid listening port but it is also used to disable the
-     webdriver. [-w] selects the port of a running geckodriver; articles are
-     fetched with Firefox reader mode when reachable, plain HTTP otherwise. *)
+  (* [-w] selects the base port of the webdriver pool: a server already
+     answering on the port is reused, otherwise geckodriver is launched, up to
+     [--jobs] instances for concurrent extraction. Without a driver, articles
+     are fetched over plain HTTP. *)
   let output, jobs, port, urls = loop "sparks-rss.epub" 4 4444 [] args in
   if urls = [] then usage_error () ;
   (output, jobs, port, urls)
@@ -47,7 +49,7 @@ let normalized_summary article =
   | Some html ->
       Sparks_rss.Spark.extract_article_text html
 
-let fetch_article webdriver_port article =
+let fetch_article pool article =
   let title = article.Sparks_rss.Syndications.title in
   let summary = normalized_summary article in
   let url = Uri.to_string article.link in
@@ -82,7 +84,7 @@ let fetch_article webdriver_port article =
     Lwt.catch
       (fun () ->
         let* source =
-          Sparks_rss.Webdriver.fetch_source webdriver_port
+          Sparks_rss.Webdriver.Pool.fetch_source pool
             article.Sparks_rss.Syndications.link
         in
         match source with
@@ -113,7 +115,8 @@ let fetch_article webdriver_port article =
   | Some kind ->
       stub kind
   | None ->
-      webdriver_extract ()
+      if Sparks_rss.Webdriver.Pool.size pool = 0 then http_extract ()
+      else webdriver_extract ()
 
 let epub_mimetype = function
   | "image/gif" ->
@@ -140,7 +143,7 @@ let write_article pub article (xhtml, images) =
         content )
     pub images
 
-let run output jobs webdriver_port feed_urls =
+let run output jobs webdriver_port feed_urls limit =
   let articles =
     List.concat_map
       (fun feed_url ->
@@ -152,21 +155,31 @@ let run output jobs webdriver_port feed_urls =
             failwith ("Feed URL must use http or https: " ^ feed_url) )
       feed_urls
   in
-  if articles = [] then
+  let limited_articles =
+    if limit > 0 then List.take limit articles
+    else articles
+  in
+  if limited_articles = [] then
     failwith "The supplied feeds contained no linked articles" ;
-  let processed =
-    Lwt_main.run
-      (Sparks_rss.Bounded.map_p ~max_concurrent:jobs
-         (fetch_article webdriver_port)
-         articles )
-  in
-  let publication_id = Sparks_rss.Epub3.Uuid (Sparks_rss.Uuid.uuid4 ()) in
-  let publication =
-    Sparks_rss.Epub3.open_out_pub ~unique_id:publication_id
-      ~title:"Spark RSS Digest" ~ln:"en" ~opt_meta:[] output
-  in
-  List.fold_left2 write_article publication articles processed
-  |> Sparks_rss.Epub3.close_pub
+  Lwt_main.run
+    (let* pool =
+       Sparks_rss.Webdriver.Pool.create ~size:jobs ~base_port:webdriver_port
+     in
+     Lwt.finalize
+       (fun () ->
+         Sparks_rss.Bounded.map_p ~max_concurrent:jobs
+           (fetch_article pool)
+           limited_articles )
+       (fun () -> Sparks_rss.Webdriver.Pool.shutdown pool))
+  |> (* Publication built from the processed articles *)
+     (fun processed ->
+       let publication_id = Sparks_rss.Epub3.Uuid (Sparks_rss.Uuid.uuid4 ()) in
+       let publication =
+         Sparks_rss.Epub3.open_out_pub ~unique_id:publication_id
+           ~title:"Spark RSS Digest" ~ln:"en" ~opt_meta:[] output
+       in
+       List.fold_left2 write_article publication articles processed
+       |> Sparks_rss.Epub3.close_pub )
 
 let () =
   try
