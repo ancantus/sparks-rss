@@ -23,7 +23,6 @@ jobs:
         uses: ocaml/setup-ocaml@v3.9.1
         with:
           ocaml-version: ${{ env.OCAML_VERSION }}
-          opam-version: '2.0'
         
       - name: Install opam packages
         run: |
@@ -73,7 +72,7 @@ jobs:
                 exit 1
               fi
             done < /tmp/ml_files.txt
-          
+      
             echo "✓ All type checks passed"
           fi
       
@@ -93,6 +92,6 @@ jobs:
                 exit 1
               fi
             done < /tmp/ml_files.txt
-          
+      
             echo "✓ All lint checks passed"
           fi
