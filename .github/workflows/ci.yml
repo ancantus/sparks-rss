@@ -19,16 +19,19 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
       
-      - name: Install OCaml dependencies (apt-get)
+      - name: Install OCaml (tarball method)
         run: |
-          apt-get update && apt-get install -y dune ocamloban ocamlformat
-
-      - name: Install opam (tarball)
-        run: |
-          curl -sSL https://github.com/ocaml/opam/releases/download/v2.1.14/opam-2.1.14-unix.tar.gz > /tmp/opam.tar.gz
+          curl -sSL https://ocaml.org/download/current.tar.gz > /tmp/ocaml.tar.gz && \
+          tar xzf /tmp/ocaml.tar.gz -C /tmp && \
+          mv /tmp/ocaml/bin/dune /usr/local/bin/dune && \
+          mv /tmp/ocaml/bin/ocaml /usr/local/bin/ocaml && \
+          mv /tmp/ocaml/bin/ocamlc /usr/local/bin/ocamlc && \
+          mv /tmp/ocaml/bin/ocamlfind /usr/local/bin/ocamlfind && \
+          curl -sSL https://github.com/ocaml/opam/releases/download/v2.1.14/opam-2.1.14-unix.tar.gz > /tmp/opam.tar.gz && \
           tar xzf /tmp/opam.tar.gz -C /tmp && \
           mv /tmp/opam/usr/local/bin/opam /usr/local/bin/opam && \
-          rm /tmp/opam -rf
+          rm /tmp/ocaml -rf /tmp/opam -rf && \
+          echo "OCaml and opam installed successfully"
 
       - name: Initialize opam and switch to 5.5
         run: |
