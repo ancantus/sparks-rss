@@ -21,11 +21,11 @@ jobs:
         
       - name: Set up OCaml with official opam
         run: |
-          set -x
+          apt-get update -qq && apt-get install -y -qq --no-install-recommends opam dune ocamloban ocamlformat >/dev/null 2>&1 || echo "Failed to install via apt" >&2
+          
+          eval $(opam init --defer-sourcing)
           export OPAM_ENV=""
-          eval $(opam init --disable-switch)
           opam switch create 5.5
-          opam sync
           source $OPAM_ENV
         
       - name: Install opam packages
