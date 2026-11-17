@@ -32,45 +32,51 @@ libcurl, OpenSSL, and zlib. For example, on Fedora:
 sudo dnf install gcc make pkgconf-pkg-config libcurl-devel openssl-devel zlib-ng-compat-devel
 ```
 
-Create a project-local OCaml switch and install the dependencies. The WebDriver
-packages are hosted in a separate Git repository, so pin that source before
-installing the project:
+Create the `ocaml55` switch once, or select it if it already exists. Then
+activate it in each new shell. The WebDriver OCaml packages are hosted in a
+separate Git repository, so pin both packages from that repository before
+installing the project dependencies:
 
 ```sh
-opam switch create . 5.2.1
-eval "$(opam env)"
-opam pin add -y webdriver_cohttp-lwt-unix git+https://github.com/art-w/ocaml-webdriver.git
-opam install . --deps-only -y
+opam switch create ocaml55 5.5.0  # skip if this switch already exists
+opam switch set ocaml55          # select it for this shell/session
+eval "$(opam env --switch=ocaml55)"
 ```
 
-#### Host notes (this machine)
-
-The libcurl headers used by this host are installed user-locally in
-`~/.local/ocaml-deps/usr` (no `libcurl-devel` RPM). They are not on the
-default pkg-config search path, so `opam install ezcurl` (which builds the
-`curl` bindings) fails with *"Package libcurl was not found in the pkg-config
-search path"* unless the prefix is exported first:
+If you use the user-local libcurl headers described below, export their pkg-config
+path before installing dependencies. Otherwise, the system development packages
+installed above provide the headers automatically.
 
 ```sh
-export PKG_CONFIG_PATH="$HOME/.local/ocaml-deps/usr/lib64/pkgconfig:$PKG_CONFIG_PATH"
+export PKG_CONFIG_PATH="$HOME/.local/ocaml-deps/usr/lib64/pkgconfig:${PKG_CONFIG_PATH:-}"
 ```
 
-Add that line to `~/.bashrc` before creating or repairing the switch. For
-EPUB validation, EPUBCheck is installed at `~/opt/epubcheck/epubcheck.jar`
+Add that line to `~/.bashrc` if you want it in each new shell. The libcurl
+headers on this host are installed in `~/.local/ocaml-deps/usr`, rather than
+through an RPM package. EPUBCheck is installed at `~/opt/epubcheck/epubcheck.jar`
 (see [EPUB validation](#epub-validation)); geckodriver lives in
-`~/.local/bin` (see [reader mode extraction](#firefox-reader-mode-extraction-recommended)).
+`~/.local/bin` (see [reader mode extraction](#firefox-reader-mode-extraction-required)).
+
+Pin the WebDriver packages and install the project dependencies:
+
+```sh
+opam pin add -y webdriver git+https://github.com/art-w/ocaml-webdriver.git
+opam pin add -y webdriver_cohttp-lwt-unix git+https://github.com/art-w/ocaml-webdriver.git
+opam install . --deps-only --with-test --with-doc -y
+```
 
 Build and run from the activated switch. Pass one or more RSS feed URLs; the
-CLI renders each linked article with Firefox reader mode (via a running
-WebDriver server) when available and plain HTTP otherwise, then writes an
-EPUB. `--jobs` controls how many articles are processed at once (default: 4).
+CLI renders each linked article with Firefox reader mode through WebDriver,
+then writes an EPUB. WebDriver and geckodriver are required. `--jobs` controls
+how many articles are processed at once (default: twice the recommended domain
+count). `--limit N` processes only the first N articles.
 
 ```sh
 make build
 dune exec sparks_rss -- --output digest.epub --jobs 4 FEED_URL [FEED_URL ...]
 ```
 
-### Firefox reader mode extraction (recommended)
+### Firefox reader mode extraction (required)
 
 Article extraction is driven by the Firefox WebDriver
 (`lib/webdriver.ml`): the browser loads the article page and the vendored
@@ -97,9 +103,9 @@ geckodriver --version
 geckodriver --port 4444 &
 ```
 
-`~/.local/bin` is on `PATH` by default on Fedora. If geckodriver is not
-reachable, the CLI prints a warning per article and falls back to plain HTTP
-extraction, so nothing fails outright. Use `-w PORT` to select another port.
+`~/.local/bin` is on `PATH` by default on Fedora. If an article cannot be
+extracted, the CLI writes a placeholder for that article and continues. Use
+`-w PORT` to select another port.
 geckodriver supports a single session at a time; the CLI serialises the
 webdriver fetches internally.
 

@@ -184,6 +184,76 @@ let extract_article_text html =
   in
   text |> String.concat " " |> normalize_text
 
+let normalize_preformatted_text text =
+  let buffer = Buffer.create (String.length text) in
+  let rec normalize_newlines i =
+    if i < String.length text then
+      match text.[i] with
+      | '\r' ->
+          Buffer.add_char buffer '\n' ;
+          normalize_newlines
+            (if i + 1 < String.length text && text.[i + 1] = '\n' then i + 2
+             else i + 1)
+      | ch ->
+          Buffer.add_char buffer ch ;
+          normalize_newlines (i + 1)
+  in
+  normalize_newlines 0 ;
+  let text = Buffer.contents buffer in
+  let is_blank line = String.trim line = "" in
+  let lines = String.split_on_char '\n' text in
+  let rec drop_blank_start = function
+    | line :: rest when is_blank line ->
+        drop_blank_start rest
+    | lines ->
+        lines
+  in
+  let lines = drop_blank_start lines |> List.rev |> drop_blank_start |> List.rev in
+  let leading_space line =
+    let rec loop i =
+      if i < String.length line && (line.[i] = ' ' || line.[i] = '\t') then
+        loop (i + 1)
+      else String.sub line 0 i
+    in
+    loop 0
+  in
+  let common_prefix left right =
+    let rec loop i =
+      if i < String.length left && i < String.length right
+         && left.[i] = right.[i]
+      then loop (i + 1)
+      else String.sub left 0 i
+    in
+    loop 0
+  in
+  let common_indent =
+    lines |> List.filter (fun line -> not (is_blank line))
+    |> List.map leading_space
+    |> function
+    | [] ->
+        ""
+    | first :: rest ->
+        List.fold_left common_prefix first rest
+  in
+  let strip_prefix line =
+    if String.starts_with ~prefix:common_indent line then
+      String.sub line (String.length common_indent)
+        (String.length line - String.length common_indent)
+    else line
+  in
+  let trim_right line =
+    let rec last_nonspace i =
+      if i >= 0 && (line.[i] = ' ' || line.[i] = '\t') then
+        last_nonspace (i - 1)
+      else i
+    in
+    String.sub line 0 (last_nonspace (String.length line - 1) + 1)
+  in
+  lines
+  |> List.map (fun line ->
+         if is_blank line then "" else line |> strip_prefix |> trim_right )
+  |> String.concat "\n"
+
 let soup_to_xhtml node =
   let module H = Tyxml.Html in
   let allowed_tags =
@@ -219,10 +289,27 @@ let soup_to_xhtml node =
           Soup.children node |> Soup.to_list |> List.concat_map convert
       | Some element ->
           let name = Soup.name element |> String.lowercase_ascii in
-          let children =
-            Soup.children element |> Soup.to_list |> List.concat_map convert
-          in
-          if not (List.mem name allowed_tags) then children
+          if name = "pre" then
+            let code_text =
+              Soup.texts (Soup.coerce element) |> String.concat ""
+              |> normalize_preformatted_text
+            in
+            let code_attrs =
+              match Soup.select_one "code" element with
+              | Some code -> attributes code
+              | None -> []
+            in
+            let pre_style =
+              H.Unsafe.string_attrib "style"
+                "white-space: pre-wrap; overflow-wrap: anywhere; font-size: 0.8em; line-height: 1.2; margin: 0.5em 0"
+            in
+            [ H.Unsafe.node "pre" ~a:(attributes element @ [pre_style])
+                [H.Unsafe.node "code" ~a:code_attrs [H.txt code_text]] ]
+          else
+            let children =
+              Soup.children element |> Soup.to_list |> List.concat_map convert
+            in
+            if not (List.mem name allowed_tags) then children
           else if List.mem name void_tags then
             [H.Unsafe.leaf name ~a:(attributes element) ()]
           else [H.Unsafe.node name ~a:(attributes element) children]
@@ -253,7 +340,8 @@ let make_article_xhtml_with_body ~body_content ~title ~summary ~text ~images =
       (H.head (H.title (H.txt title)) [H.meta ~a:[H.a_charset "utf-8"] ()])
       body
   in
-  Format.asprintf "%a" (HP.pp ~indent:true ()) doc
+  (* Pretty-print indentation becomes literal content inside [<pre>] blocks. *)
+  Format.asprintf "%a" (HP.pp ~indent:false ()) doc
 
 let make_article_xhtml ~title ~summary ~text ~images =
   make_article_xhtml_with_body ~body_content:None ~title ~summary ~text ~images
