@@ -184,7 +184,52 @@ let extract_article_text html =
   in
   text |> String.concat " " |> normalize_text
 
-let make_article_xhtml ~title ~summary ~text ~images =
+let soup_to_xhtml node =
+  let module H = Tyxml.Html in
+  let allowed_tags =
+    [ "a"; "abbr"; "article"; "b"; "blockquote"; "br"; "caption"
+    ; "code"; "dd"; "del"; "div"; "dl"; "dt"; "em"; "figcaption"
+    ; "figure"; "h1"; "h2"; "h3"; "h4"; "h5"; "h6"; "hr"; "i"
+    ; "img"; "ins"; "kbd"; "li"; "mark"; "ol"; "p"; "pre"; "q"
+    ; "s"; "samp"; "section"; "small"; "span"; "strong"; "sub"
+    ; "sup"; "table"; "tbody"; "td"; "th"; "thead"; "tfoot"; "time"
+    ; "tr"; "u"; "ul"; "var" ]
+  in
+  let void_tags = ["br"; "hr"; "img"] in
+  let safe_attributes =
+    [ "alt"; "class"; "cite"; "colspan"; "datetime"; "dir"; "height"
+    ; "href"; "id"; "lang"; "rowspan"; "src"; "start"; "title"; "width"
+    ; "epub:type" ]
+  in
+  let attributes element =
+    Soup.fold_attributes
+      (fun attrs name value ->
+        let name = String.lowercase_ascii name in
+        if List.mem name safe_attributes then
+          H.Unsafe.string_attrib name value :: attrs
+        else attrs )
+      [] element
+  in
+  let rec convert node =
+    if Soup.is_text node then
+      match Soup.leaf_text node with Some text -> [H.txt text] | None -> []
+    else
+      match Soup.element node with
+      | None ->
+          Soup.children node |> Soup.to_list |> List.concat_map convert
+      | Some element ->
+          let name = Soup.name element |> String.lowercase_ascii in
+          let children =
+            Soup.children element |> Soup.to_list |> List.concat_map convert
+          in
+          if not (List.mem name allowed_tags) then children
+          else if List.mem name void_tags then
+            [H.Unsafe.leaf name ~a:(attributes element) ()]
+          else [H.Unsafe.node name ~a:(attributes element) children]
+  in
+  convert node
+
+let make_article_xhtml_with_body ~body_content ~title ~summary ~text ~images =
   let module H = Tyxml.Html in
   let image_elements =
     List.map (fun (path, _, _) -> H.img ~src:path ~alt:"" ()) images
@@ -193,19 +238,25 @@ let make_article_xhtml ~title ~summary ~text ~images =
     H.body
       ( [H.h1 [H.txt title]]
       @ (if summary = "" || summary = text then [] else [H.p [H.txt summary]])
-      @ (if text = "" then [] else [H.p [H.txt text]])
+      @ ( match body_content with
+        | Some content -> content
+        | None -> if text = "" then [] else [H.p [H.txt text]] )
       @ image_elements )
   in
   let doc =
     H.html
       ~a:
         [ H.Unsafe.string_attrib "xmlns" "http://www.w3.org/1999/xhtml"
+        ; H.Unsafe.string_attrib "xmlns:epub" "http://www.idpf.org/2007/ops"
         ; H.a_lang "en"
         ; H.a_xml_lang "en" ]
       (H.head (H.title (H.txt title)) [H.meta ~a:[H.a_charset "utf-8"] ()])
       body
   in
   Format.asprintf "%a" (HP.pp ~indent:true ()) doc
+
+let make_article_xhtml ~title ~summary ~text ~images =
+  make_article_xhtml_with_body ~body_content:None ~title ~summary ~text ~images
 
 let make_stub_xhtml ~title ~kind url =
   let description =
@@ -232,5 +283,15 @@ let extract_article ~title ~summary ~url html =
   in
   let* images = download_and_swap_images ~base_url:url image_nodes in
   let text = if text = "" then summary else text in
-  let xhtml = make_article_xhtml ~title ~summary ~text ~images in
+  let body_content =
+    match select_article_root soup with
+    | Some root ->
+        Some (soup_to_xhtml (Soup.coerce root))
+    | None ->
+        Some (soup_to_xhtml (Soup.coerce soup))
+  in
+  let xhtml =
+    make_article_xhtml_with_body ~body_content ~title
+      ~summary ~text ~images
+  in
   Lwt.return (xhtml, images)

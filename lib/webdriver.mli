@@ -23,8 +23,7 @@ module Pool : sig
      answers the webdriver status endpoint is reused; otherwise geckodriver is
      launched on it (found on [PATH]). Ports that cannot serve a driver are
      skipped. Launched processes belong to the pool and must be released with
-     {!shutdown}. An empty pool means no webdriver is available and callers
-     should fall back to plain HTTP. *)
+     {!shutdown}. An empty pool means no webdriver is available. *)
 
   val size : t -> int
   (* [size pool] is the number of usable drivers in [pool]. *)
