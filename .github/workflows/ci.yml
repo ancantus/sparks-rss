@@ -19,14 +19,11 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         
-      - name: Set up OCaml with official opam
-        run: |
-          apt-get update -qq && apt-get install -y -qq --no-install-recommends opam dune ocamloban ocamlformat >/dev/null 2>&1 || echo "Failed to install via apt" >&2
-          
-          eval $(opam init --defer-sourcing)
-          export OPAM_ENV=""
-          opam switch create 5.5
-          source $OPAM_ENV
+      - name: Set up OCaml with opam
+        uses: ocaml/setup-ocaml@v3
+        with:
+          ocaml-compiler: '5.5'
+          opam-repositories: ''
         
       - name: Install opam packages
         run: |
