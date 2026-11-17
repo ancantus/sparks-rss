@@ -164,8 +164,8 @@ module Pool = struct
                   ; lock= Lwt_mutex.create ()
                   ; proc= None } |] ) )
         else
-          let* launched = spawn port in
-          match launched with
+          let* spawned = spawn port in
+          match spawned with
           | Some driver ->
               setup (index + 1) (Array.append accepted [| driver |])
           | None ->
