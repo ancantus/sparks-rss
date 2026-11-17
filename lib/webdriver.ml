@@ -167,7 +167,6 @@ module Pool = struct
           let* launched = spawn port in
           match launched with
           | Some driver ->
-              report (Printf.sprintf "Launched geckodriver on port %d" port) ;
               setup (index + 1) (Array.append accepted [| driver |])
           | None ->
               report
