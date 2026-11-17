@@ -18,7 +18,7 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-        
+      
       - name: Install OCaml 5.5 via apt-get
         run: |
           set -x
@@ -27,7 +27,7 @@ jobs:
           sudo apt-get install -y --no-install-recommends opam dune ocamloban ocamlformat >/dev/null 2>&1 || (sudo apt-get update && sudo apt-get install -y opam dune ocamloban ocamlformat)
           echo "Installation completed"
 
-  - name: Initialize opam and switch to 5.5
+      - name: Initialize opam and switch to 5.5
         run: |
           set -x
           eval $(opam init --defer-sourcing)
@@ -35,12 +35,12 @@ jobs:
           opam switch create 5.5
           source $OPAM_ENV
           echo "OCaml $OPAM_VERSION switched successfully"
-        
+
       - name: Install opam packages
         run: |
           eval $(opam env)
           opam sync
-        
+      
       - name: Build project with dune
         run: |
           eval $(opam env)
@@ -54,7 +54,7 @@ jobs:
           fi
           
           dune build
-        
+      
       - name: Format check with ocamlformat (optional)
         run: |
           eval $(opam env)
@@ -79,7 +79,7 @@ jobs:
               fi
             done < /tmp/ml_files.txt
           fi
-        
+      
       - name: Type check with ocamloban (optional)
         run: |
           eval $(opam env)
@@ -103,7 +103,7 @@ jobs:
               echo "✓ All type checks passed"
             fi
           fi
-        
+      
       - name: Build test with dune (optional)
         run: |
           eval $(opam env)
