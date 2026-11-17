@@ -76,7 +76,10 @@ let build_landmarks ~title:t toc_path docs =
     @ (List.rev docs |> bodymatter)
     |> H.ol
   in
-  H.(nav ~a:[a_epub_type [Landmarks]; a_id "landmarks"; a_hidden `Hidden] [landmarks])
+  H.(
+    nav
+      ~a:[a_epub_type [Landmarks]; a_id "landmarks"; a_hidden `Hidden]
+      [landmarks] )
 
 let build_body ~title:t toc_path docs =
   H.(

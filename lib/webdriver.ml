@@ -19,8 +19,7 @@ let rec wait ?(timeout = 10000) ?(step = 100) cmd =
     (fun _ ->
       W.sleep step
       >>= fun () ->
-      if timeout < step then return None else wait ~timeout:(timeout - step) cmd
-      )
+      if timeout < step then return None else wait ~timeout:(timeout - step) cmd )
 
 let webdriver_fetch_source wait_for_contents url =
   let* () = W.goto url in
@@ -48,11 +47,11 @@ let readability_parse_script =
 let parse_reader_article =
   W.execute readability_parse_script
   |> map (fun json ->
-         match Yojson.Safe.Util.to_string_option json with
-         | Some content when content <> "" ->
-             Some (S.parse content)
-         | _ ->
-             None )
+      match Yojson.Safe.Util.to_string_option json with
+      | Some content when content <> "" ->
+          Some (S.parse content)
+      | _ ->
+          None )
 
 let wait_for time = wait ~timeout:time (W.find_first `css "#NOT-A-VALID-CLASS")
 
@@ -74,12 +73,11 @@ module Pool = struct
   open Lwt.Syntax
 
   type driver =
-    { host : string
-    ; lock : Lwt_mutex.t
-        (* geckodriver serves one session at a time *)
-    ; proc : Lwt_process.process_none option }
+    { host: string
+    ; lock: Lwt_mutex.t (* geckodriver serves one session at a time *)
+    ; proc: Lwt_process.process_none option }
 
-  type t = { drivers : driver array; mutable cursor : int }
+  type t = {drivers: driver array; mutable cursor: int}
 
   let ready port =
     let url = Printf.sprintf "http://127.0.0.1:%d/status" port in
@@ -87,15 +85,13 @@ module Pool = struct
     match response with
     | None ->
         Lwt.return false
-    | Some (body, _) ->
+    | Some (body, _) -> (
         let value_ready json =
           let open Yojson.Safe.Util in
           try member "value" json |> member "ready" |> to_bool with _ -> false
         in
-        (try
-           Lwt.return (value_ready (Yojson.Safe.from_string body))
-         with _ ->
-           Lwt.return false )
+        try Lwt.return (value_ready (Yojson.Safe.from_string body))
+        with _ -> Lwt.return false )
 
   let find_binary () =
     match Sys.getenv_opt "PATH" with
@@ -116,10 +112,8 @@ module Pool = struct
         Lwt.return None
     | Some binary -> (
         let proc =
-          Lwt_process.open_process_none
-            ~stdout:`Dev_null
-            ~stderr:`Dev_null
-            ("geckodriver", [| binary; "--port"; Int.to_string port |])
+          Lwt_process.open_process_none ~stdout:`Dev_null ~stderr:`Dev_null
+            ("geckodriver", [|binary; "--port"; Int.to_string port|])
         in
         let rec poll remaining =
           match proc#state with
@@ -127,12 +121,12 @@ module Pool = struct
               Lwt.return false
           | Lwt_process.Running when remaining <= 0 ->
               Lwt.return false
-          | Lwt_process.Running -> (
+          | Lwt_process.Running ->
               let* up = ready port in
               if up then Lwt.return true
               else
                 let* () = Lwt_unix.sleep 0.25 in
-                poll (remaining - 250) )
+                poll (remaining - 250)
         in
         let* started = poll timeout_ms in
         match started with
@@ -147,8 +141,7 @@ module Pool = struct
             let* _ = proc#close in
             Lwt.return None )
 
-  let report message =
-    Printf.eprintf "[sparks_rss] %s\n%!" message
+  let report message = Printf.eprintf "[sparks_rss] %s\n%!" message
 
   let create ~size ~base_port =
     let rec setup index accepted =
@@ -168,7 +161,7 @@ module Pool = struct
           match launched with
           | Some driver ->
               report (Printf.sprintf "Launched geckodriver on port %d" port) ;
-              setup (index + 1) (Array.append accepted [| driver |])
+              setup (index + 1) (Array.append accepted [|driver|])
           | None ->
               report
                 (Printf.sprintf
@@ -178,7 +171,7 @@ module Pool = struct
     let* drivers = setup 0 [||] in
     if Array.length drivers = 0 then
       report "No WebDriver available; article extraction will fail" ;
-    Lwt.return { drivers; cursor= 0 }
+    Lwt.return {drivers; cursor= 0}
 
   let size pool = Array.length pool.drivers
 
@@ -191,7 +184,7 @@ module Pool = struct
           W.run ~host:driver.host W.Capabilities.firefox_headless (action url) )
 
   let reap proc =
-    (match proc#state with
+    ( match proc#state with
     | Lwt_process.Running ->
         proc#kill Sys.sigterm
     | Lwt_process.Exited _ ->
@@ -201,8 +194,7 @@ module Pool = struct
       | Lwt_process.Exited _ ->
           Lwt.return ()
       | Lwt_process.Running when remaining <= 0 ->
-          proc#kill Sys.sigkill ;
-          Lwt.return ()
+          proc#kill Sys.sigkill ; Lwt.return ()
       | Lwt_process.Running ->
           let* () = Lwt_unix.sleep 0.25 in
           wait_for_exit (remaining - 250)
@@ -215,5 +207,9 @@ module Pool = struct
     let spawned =
       Array.to_list pool.drivers |> List.filter_map (fun d -> d.proc)
     in
-    match spawned with [] -> Lwt.return () | procs -> Lwt_list.iter_s reap procs
+    match spawned with
+    | [] ->
+        Lwt.return ()
+    | procs ->
+        Lwt_list.iter_s reap procs
 end

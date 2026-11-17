@@ -76,6 +76,16 @@ make build
 dune exec sparks_rss -- --output digest.epub --jobs 4 FEED_URL [FEED_URL ...]
 ```
 
+### Comment threads (Hacker News)
+
+Articles whose RSS `<comments>` link points at a Hacker News item
+(`news.ycombinator.com/item?id=…`, detected by `lib/hackernews.ml`) get a
+second chapter, `Comments: <article title>`, saved immediately after the
+article. The comment thread page is fetched through the same Firefox reader
+mode pipeline, so the rendered content is whatever reader mode produces. When
+the comments page cannot be extracted, the article is still published and a
+warning is printed; comments from other aggregators are not supported yet.
+
 ### Firefox reader mode extraction (required)
 
 Article extraction is driven by the Firefox WebDriver

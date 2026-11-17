@@ -403,7 +403,8 @@ let open_out_pub ~unique_id:uuid ~title ~ln:lang
 
 let close_pub pub =
   make_ncx pub |> make_toc
-  |> (* Table of contents dynamically created from all the documents *)
+  |>
+  (* Table of contents dynamically created from all the documents *)
   fun pub ->
   let pub =
     make_ocf_package pub |> write_ocf_package pub pub.metadata.package_path
