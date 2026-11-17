@@ -143,16 +143,19 @@ let run output jobs webdriver_port feed_urls limit =
 
   (* Counter to track processed article count for progress reporting *)
   let counter_ref = ref 0 in
-  
-  Lwt_main.run 
-    (let* pool = Sparks_rss.Webdriver.Pool.create ~size:jobs ~base_port:webdriver_port in
 
+  Lwt_main.run
+    (let* pool =
+       Sparks_rss.Webdriver.Pool.create ~size:jobs ~base_port:webdriver_port
+     in
      Lwt.finalize
-       (fun () ->
-         Sparks_rss.Bounded.map_p ~max_concurrent:jobs
-           (fetch_article pool)
-           limited_articles )
-       (fun () -> Sparks_rss.Webdriver.Pool.shutdown pool))
+        (fun () ->
+          Sparks_rss.Bounded.map_p ~max_concurrent:jobs
+            (fetch_article pool)
+            limited_articles )
+        (fun () -> 
+          Printf.printf "Processed %d article(s)\n" !counter_ref ;
+          Sparks_rss.Webdriver.Pool.shutdown pool))
   |> (* Publication built from the processed articles *)
      (fun processed ->
        let publication_id = Sparks_rss.Epub3.Uuid (Sparks_rss.Uuid.uuid4 ()) in
