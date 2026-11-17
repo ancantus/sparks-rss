@@ -21,9 +21,11 @@ jobs:
       
       - name: Install OCaml 5.5 via apt-get
         run: |
-          sudo rm -rf /var/lib/apt/lists/*
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends opam dune ocamloban ocamlformat
+          apt-get update && \
+          apt-get install -y dune ocamloban ocamlformat && \
+          curl -sSL https://github.com/ocaml/opam/releases/download/v2.1.14/opam-2.1.14-unix.tar.gz | tar xzf - && \
+          mv opam /usr/local/bin && \
+          echo "Installation completed"
 
       - name: Initialize opam and switch to 5.5
         run: |
