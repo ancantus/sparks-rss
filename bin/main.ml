@@ -140,10 +140,13 @@ let run output jobs webdriver_port feed_urls limit =
   in
   if limited_articles = [] then
     failwith "The supplied feeds contained no linked articles" ;
-  Lwt_main.run
-    (let* pool =
-       Sparks_rss.Webdriver.Pool.create ~size:jobs ~base_port:webdriver_port
-     in
+
+  (* Counter to track processed article count for progress reporting *)
+  let counter_ref = ref 0 in
+  
+  Lwt_main.run 
+    (let* pool = Sparks_rss.Webdriver.Pool.create ~size:jobs ~base_port:webdriver_port in
+
      Lwt.finalize
        (fun () ->
          Sparks_rss.Bounded.map_p ~max_concurrent:jobs
