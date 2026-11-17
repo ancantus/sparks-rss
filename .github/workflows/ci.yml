@@ -21,11 +21,12 @@ jobs:
         
       - name: Set up OCaml with official opam
         run: |
-          curl -fsSL https://raw.githubusercontent.com/ocaml/opam/master/bin/opam -o /usr/local/bin/opam && chmod +x /usr/local/bin/opam
-          
-          eval $(opam init --defer-sourcing)
+          set -x
+          export OPAM_ENV=""
+          eval $(opam init --disable-switch)
+          opam switch create 5.5
           opam sync
-          source ~/.opam/opam-init/init.sh
+          source $OPAM_ENV
         
       - name: Install opam packages
         run: |
