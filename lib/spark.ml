@@ -55,25 +55,51 @@ let download_image url =
       Lwt.return None
 
 let download_and_swap_images ?base_url html_images =
-  Lwt.map (List.filter_map Fun.id)
-    (Lwt_list.map_s
-       (fun html_img ->
-         match Soup.attribute "src" html_img with
+  (* Group the image nodes by resolved URL: aggregator comment threads such as
+     Hacker News repeat the same spacer and vote-arrow images once per
+     comment, so each unique URL only needs one fetch and one embedded copy. *)
+  let grouped =
+    List.fold_left
+      (fun groups html_img ->
+        match Soup.attribute "src" html_img with
+        | None ->
+            Soup.delete html_img ; groups
+        | Some src -> (
+          match resolve_image_url ?base_url src with
+          | None ->
+              Soup.delete html_img ; groups
+          | Some url -> (
+              let matching, others =
+                List.partition (fun (u, _) -> u = url) groups
+              in
+              match matching with
+              | (u, nodes) :: _ ->
+                  (u, html_img :: nodes) :: others
+              | [] ->
+                  (url, [html_img]) :: groups ) ) )
+      [] html_images
+  in
+  let* downloaded =
+    Lwt_list.map_s
+      (fun (url, nodes) ->
+        let* result = download_image url in
+        Lwt.return (result, nodes) )
+      grouped
+  in
+  List.iter
+    (fun (result, nodes) ->
+      match result with Some _ -> () | None -> List.iter Soup.delete nodes )
+    downloaded ;
+  Lwt.return
+    (List.filter_map
+       (fun (result, nodes) ->
+         match result with
+         | Some (path, mimetype, content) ->
+             List.iter (update_image_url path) nodes ;
+             Some (path, mimetype, content)
          | None ->
-             Soup.delete html_img ; Lwt.return None
-         | Some src -> (
-           match resolve_image_url ?base_url src with
-           | None ->
-               Soup.delete html_img ; Lwt.return None
-           | Some url -> (
-               let* result = download_image url in
-               match result with
-               | Some (path, mimetype, content) ->
-                   update_image_url path html_img ;
-                   Lwt.return (Some (path, mimetype, content))
-               | None ->
-                   Soup.delete html_img ; Lwt.return None ) ) )
-       html_images )
+             None )
+       downloaded )
 
 let parse_fx_reader ?base_url (node : Soup.soup Soup.node) =
   let header = node $ ".header" in
@@ -87,8 +113,8 @@ let parse_fx_reader ?base_url (node : Soup.soup Soup.node) =
 let normalize_text text =
   text |> String.to_seq
   |> Seq.filter (fun c ->
-         let code = Char.code c in
-         code = 0x09 || code = 0x0A || code = 0x0D || code >= 0x20 )
+      let code = Char.code c in
+      code = 0x09 || code = 0x0A || code = 0x0D || code >= 0x20 )
   |> String.of_seq
   |> String.map (function '\n' | '\r' | '\t' -> ' ' | c -> c)
   |> String.split_on_char ' '
@@ -192,8 +218,8 @@ let normalize_preformatted_text text =
       | '\r' ->
           Buffer.add_char buffer '\n' ;
           normalize_newlines
-            (if i + 1 < String.length text && text.[i + 1] = '\n' then i + 2
-             else i + 1)
+            ( if i + 1 < String.length text && text.[i + 1] = '\n' then i + 2
+              else i + 1 )
       | ch ->
           Buffer.add_char buffer ch ;
           normalize_newlines (i + 1)
@@ -208,7 +234,9 @@ let normalize_preformatted_text text =
     | lines ->
         lines
   in
-  let lines = drop_blank_start lines |> List.rev |> drop_blank_start |> List.rev in
+  let lines =
+    drop_blank_start lines |> List.rev |> drop_blank_start |> List.rev
+  in
   let leading_space line =
     let rec loop i =
       if i < String.length line && (line.[i] = ' ' || line.[i] = '\t') then
@@ -219,15 +247,18 @@ let normalize_preformatted_text text =
   in
   let common_prefix left right =
     let rec loop i =
-      if i < String.length left && i < String.length right
-         && left.[i] = right.[i]
+      if
+        i < String.length left
+        && i < String.length right
+        && left.[i] = right.[i]
       then loop (i + 1)
       else String.sub left 0 i
     in
     loop 0
   in
   let common_indent =
-    lines |> List.filter (fun line -> not (is_blank line))
+    lines
+    |> List.filter (fun line -> not (is_blank line))
     |> List.map leading_space
     |> function
     | [] ->
@@ -237,49 +268,140 @@ let normalize_preformatted_text text =
   in
   let strip_prefix line =
     if String.starts_with ~prefix:common_indent line then
-      String.sub line (String.length common_indent)
+      String.sub line
+        (String.length common_indent)
         (String.length line - String.length common_indent)
     else line
   in
   let trim_right line =
     let rec last_nonspace i =
-      if i >= 0 && (line.[i] = ' ' || line.[i] = '\t') then
-        last_nonspace (i - 1)
+      if i >= 0 && (line.[i] = ' ' || line.[i] = '\t') then last_nonspace (i - 1)
       else i
     in
     String.sub line 0 (last_nonspace (String.length line - 1) + 1)
   in
   lines
   |> List.map (fun line ->
-         if is_blank line then "" else line |> strip_prefix |> trim_right )
+      if is_blank line then "" else line |> strip_prefix |> trim_right )
   |> String.concat "\n"
+
+(* Readability strips heading ids from the parsed document, which leaves
+   internal links such as href="#section" pointing nowhere; EPUB readers
+   reject those dangling fragment references. *)
+let strip_dangling_fragment_links node =
+  let ids =
+    Soup.select "*" node |> Soup.to_list
+    |> List.filter_map (Soup.attribute "id")
+  in
+  List.iter
+    (fun anchor ->
+      match Soup.attribute "href" anchor with
+      | Some href when String.length href > 1 && href.[0] = '#' -> (
+          let target = String.sub href 1 (String.length href - 1) in
+          match List.mem target ids with
+          | true ->
+              ()
+          | false ->
+              Soup.delete_attribute "href" anchor )
+      | _ ->
+          () )
+    (Soup.select "a" node |> Soup.to_list)
 
 let soup_to_xhtml node =
   let module H = Tyxml.Html in
   let allowed_tags =
-    [ "a"; "abbr"; "article"; "b"; "blockquote"; "br"; "caption"
-    ; "code"; "dd"; "del"; "div"; "dl"; "dt"; "em"; "figcaption"
-    ; "figure"; "h1"; "h2"; "h3"; "h4"; "h5"; "h6"; "hr"; "i"
-    ; "img"; "ins"; "kbd"; "li"; "mark"; "ol"; "p"; "pre"; "q"
-    ; "s"; "samp"; "section"; "small"; "span"; "strong"; "sub"
-    ; "sup"; "table"; "tbody"; "td"; "th"; "thead"; "tfoot"; "time"
-    ; "tr"; "u"; "ul"; "var" ]
+    [ "a"
+    ; "abbr"
+    ; "article"
+    ; "b"
+    ; "blockquote"
+    ; "br"
+    ; "caption"
+    ; "code"
+    ; "dd"
+    ; "del"
+    ; "div"
+    ; "dl"
+    ; "dt"
+    ; "em"
+    ; "figcaption"
+    ; "figure"
+    ; "h1"
+    ; "h2"
+    ; "h3"
+    ; "h4"
+    ; "h5"
+    ; "h6"
+    ; "hr"
+    ; "i"
+    ; "img"
+    ; "ins"
+    ; "kbd"
+    ; "li"
+    ; "mark"
+    ; "ol"
+    ; "p"
+    ; "pre"
+    ; "q"
+    ; "s"
+    ; "samp"
+    ; "section"
+    ; "small"
+    ; "span"
+    ; "strong"
+    ; "sub"
+    ; "sup"
+    ; "table"
+    ; "tbody"
+    ; "td"
+    ; "th"
+    ; "thead"
+    ; "tfoot"
+    ; "time"
+    ; "tr"
+    ; "u"
+    ; "ul"
+    ; "var" ]
   in
   let void_tags = ["br"; "hr"; "img"] in
   let safe_attributes =
-    [ "alt"; "class"; "cite"; "colspan"; "datetime"; "dir"; "height"
-    ; "href"; "id"; "lang"; "rowspan"; "src"; "start"; "title"; "width"
+    [ "alt"
+    ; "class"
+    ; "cite"
+    ; "colspan"
+    ; "datetime"
+    ; "dir"
+    ; "height"
+    ; "href"
+    ; "id"
+    ; "lang"
+    ; "rowspan"
+    ; "src"
+    ; "start"
+    ; "title"
+    ; "width"
     ; "epub:type" ]
   in
   let attributes element =
     Soup.fold_attributes
       (fun attrs name value ->
         let name = String.lowercase_ascii name in
-        if List.mem name safe_attributes then
+        (* EPUB XHTML requires width/height to be plain integers; sizes such
+           as "100%" must be dropped. *)
+        let valid =
+          match name with
+          | "width" | "height" ->
+              String.length value > 0
+              && String.for_all (fun c -> c >= '0' && c <= '9') value
+          | _ ->
+              true
+        in
+        if valid && List.mem name safe_attributes then
           H.Unsafe.string_attrib name value :: attrs
         else attrs )
       [] element
   in
+  strip_dangling_fragment_links node ;
   let rec convert node =
     if Soup.is_text node then
       match Soup.leaf_text node with Some text -> [H.txt text] | None -> []
@@ -291,30 +413,40 @@ let soup_to_xhtml node =
           let name = Soup.name element |> String.lowercase_ascii in
           if name = "pre" then
             let code_text =
-              Soup.texts (Soup.coerce element) |> String.concat ""
-              |> normalize_preformatted_text
+              Soup.texts (Soup.coerce element)
+              |> String.concat "" |> normalize_preformatted_text
             in
             let code_attrs =
               match Soup.select_one "code" element with
-              | Some code -> attributes code
-              | None -> []
+              | Some code ->
+                  attributes code
+              | None ->
+                  []
             in
             let pre_style =
               H.Unsafe.string_attrib "style"
-                "white-space: pre-wrap; overflow-wrap: anywhere; font-size: 0.8em; line-height: 1.2; margin: 0.5em 0"
+                "white-space: pre-wrap; overflow-wrap: anywhere; font-size: \
+                 0.8em; line-height: 1.2; margin: 0.5em 0"
             in
-            [ H.Unsafe.node "pre" ~a:(attributes element @ [pre_style])
+            [ H.Unsafe.node "pre"
+                ~a:(attributes element @ [pre_style])
                 [H.Unsafe.node "code" ~a:code_attrs [H.txt code_text]] ]
           else
             let children =
               Soup.children element |> Soup.to_list |> List.concat_map convert
             in
             if not (List.mem name allowed_tags) then children
-          else if List.mem name void_tags then
-            [H.Unsafe.leaf name ~a:(attributes element) ()]
-          else [H.Unsafe.node name ~a:(attributes element) children]
+            else if List.mem name void_tags then
+              [H.Unsafe.leaf name ~a:(attributes element) ()]
+            else [H.Unsafe.node name ~a:(attributes element) children]
   in
   convert node
+
+let render_xhtml_elements elements =
+  String.concat ""
+    (List.map
+       (fun element -> Format.asprintf "%a" (HP.pp_elt ~indent:false ()) element)
+       elements )
 
 let make_article_xhtml_with_body ~body_content ~title ~summary ~text ~images =
   let module H = Tyxml.Html in
@@ -322,12 +454,14 @@ let make_article_xhtml_with_body ~body_content ~title ~summary ~text ~images =
     List.map (fun (path, _, _) -> H.img ~src:path ~alt:"" ()) images
   in
   let body =
-    H.body
+    H.Unsafe.node "body"
       ( [H.h1 [H.txt title]]
       @ (if summary = "" || summary = text then [] else [H.p [H.txt summary]])
       @ ( match body_content with
-        | Some content -> content
-        | None -> if text = "" then [] else [H.p [H.txt text]] )
+        | Some content ->
+            [H.Unsafe.data content]
+        | None ->
+            if text = "" then [] else [H.p [H.txt text]] )
       @ image_elements )
   in
   let doc =
@@ -358,6 +492,47 @@ let make_stub_xhtml ~title ~kind url =
          description url )
     ~images:[]
 
+(* A flattened comment list: one compact header (author, age) per comment,
+   the sanitized comment text below it, and a rule between comments. *)
+let make_comments_xhtml ~title comments =
+  let module H = Tyxml.Html in
+  let header_style = "font-size: 0.75em; color: #555; margin: 1.2em 0 0.3em" in
+  let comment_block comment =
+    let head =
+      H.p ~a:[H.Unsafe.string_attrib "style" header_style]
+        [ H.txt comment.Hackernews.author
+        ; H.txt
+            (if comment.Hackernews.age = "" then ""
+             else " · " ^ comment.Hackernews.age) ]
+      |> fun element -> render_xhtml_elements [element]
+    in
+    let body =
+      Soup.parse comment.Hackernews.text |> Soup.coerce |> soup_to_xhtml
+      |> render_xhtml_elements
+    in
+    "<div>" ^ head ^ body ^ "</div>"
+  in
+  let rec interleave = function
+    | [] ->
+        []
+    | [comment] ->
+        [comment_block comment]
+    | comment :: tail ->
+        comment_block comment
+        :: render_xhtml_elements [H.hr ()]
+        :: interleave tail
+  in
+  let body_content =
+    match comments with
+    | [] ->
+        render_xhtml_elements [H.p [H.txt "No comments yet."]]
+    | comments ->
+        String.concat "" (interleave comments)
+  in
+  let comments_heading = render_xhtml_elements [H.h2 [H.txt "Comments:"]] in
+  make_article_xhtml_with_body ~body_content:(Some (comments_heading ^ body_content)) ~title ~summary:"" ~text:""
+    ~images:[]
+
 let extract_article ~title ~summary ~url html =
   let soup = Soup.parse html in
   remove_noncontent_nodes soup ;
@@ -374,12 +549,11 @@ let extract_article ~title ~summary ~url html =
   let body_content =
     match select_article_root soup with
     | Some root ->
-        Some (soup_to_xhtml (Soup.coerce root))
+        Some (render_xhtml_elements (soup_to_xhtml (Soup.coerce root)))
     | None ->
-        Some (soup_to_xhtml (Soup.coerce soup))
+        Some (render_xhtml_elements (soup_to_xhtml (Soup.coerce soup)))
   in
   let xhtml =
-    make_article_xhtml_with_body ~body_content ~title
-      ~summary ~text ~images
+    make_article_xhtml_with_body ~body_content ~title ~summary ~text ~images
   in
   Lwt.return (xhtml, images)

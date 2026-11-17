@@ -3,8 +3,8 @@ open List
 
 let print_usage () =
   Printf.eprintf
-    "Usage: sparks_rss [-o OUTPUT.epub] [-j ARTICLES] [-w PORT] [--limit N] FEED_URL \
-     [FEED_URL ...]\n\
+    "Usage: sparks_rss [-o OUTPUT.epub] [-j ARTICLES] [-w PORT] [--limit N] \
+     FEED_URL [FEED_URL ...]\n\
      Fetch RSS feeds, download their linked articles and create an EPUB.\n"
 
 let usage_error () = print_usage () ; exit 2
@@ -32,7 +32,9 @@ let parse_args args =
     | ("-w" | "--webdriver-port") :: [] ->
         usage_error ()
     | "--limit" :: value :: tail ->
-        let limit = try int_of_string value with Failure _ -> usage_error () in
+        let limit =
+          try int_of_string value with Failure _ -> usage_error ()
+        in
         if limit < 0 then usage_error () ;
         loop output jobs port limit urls tail
     | "--limit" :: [] ->
@@ -50,6 +52,10 @@ let parse_args args =
   if urls = [] then usage_error () ;
   (output, jobs, port, limit, urls)
 
+type chapter =
+  {title: string; xhtml: string; images: (string * string * string) list}
+(* A chapter of the digest: one XHTML document plus any images embedded in it. *)
+
 let normalized_summary article =
   match article.Sparks_rss.Syndications.description with
   | None ->
@@ -57,7 +63,7 @@ let normalized_summary article =
   | Some html ->
       Sparks_rss.Spark.extract_article_text html
 
-let fetch_article pool article =
+let fetch_article_chapter pool article =
   let title = article.Sparks_rss.Syndications.title in
   let url = Uri.to_string article.link in
   let placeholder exn =
@@ -74,7 +80,7 @@ let fetch_article pool article =
         ~text:("Article extraction failed. Source: " ^ url ^ "\n" ^ reason)
         ~images:[]
     in
-    Lwt.return (xhtml, [])
+    Lwt.return [{title; xhtml; images= []}]
   in
   Lwt.catch
     (fun () ->
@@ -83,19 +89,48 @@ let fetch_article pool article =
         Sparks_rss.Spark.stub_kind_of_uri article.Sparks_rss.Syndications.link
       with
       | Some kind ->
-          Lwt.return (Sparks_rss.Spark.make_stub_xhtml ~title ~kind url, [])
-      | None ->
+          Lwt.return
+            [ { title
+              ; xhtml= Sparks_rss.Spark.make_stub_xhtml ~title ~kind url
+              ; images= [] } ]
+      | None -> (
           let* source =
             Sparks_rss.Webdriver.Pool.fetch_source pool
               article.Sparks_rss.Syndications.link
           in
-          ( match source with
+          match source with
           | None ->
               Lwt.fail_with "WebDriver returned no article document"
           | Some soup ->
-              Sparks_rss.Spark.extract_article ~title ~summary ~url
-                (Sparks_rss.Spark.reader_page_contents soup) ) )
+              let+ xhtml, images =
+                Sparks_rss.Spark.extract_article ~title ~summary ~url
+                  (Sparks_rss.Spark.reader_page_contents soup)
+              in
+              [{title; xhtml; images}] ) )
     placeholder
+
+(* Comments from supported aggregators follow their article as extra chapters. *)
+let fetch_comments_chapters article =
+  match article.Sparks_rss.Syndications.comments with
+  | Some comments when Sparks_rss.Hackernews.is_item_url comments ->
+      let title = "Comments: " ^ article.Sparks_rss.Syndications.title in
+      ( match Sparks_rss.Hackernews.fetch_comments comments with
+      | None ->
+          Printf.eprintf "[sparks_rss] Could not fetch comments %s\n%!"
+            (Uri.to_string comments) ;
+          Lwt.return []
+      | Some parsed ->
+          Lwt.return
+            [ { title
+              ; xhtml= Sparks_rss.Spark.make_comments_xhtml ~title parsed
+              ; images= [] } ] )
+  | _ ->
+      Lwt.return []
+
+let fetch_article pool article =
+  let* main = fetch_article_chapter pool article in
+  let* comments = fetch_comments_chapters article in
+  Lwt.return (main @ comments)
 
 let epub_mimetype = function
   | "image/gif" ->
@@ -111,16 +146,13 @@ let epub_mimetype = function
   | mimetype ->
       failwith ("Unsupported downloaded image type: " ^ mimetype)
 
-let write_article pub article (xhtml, images) =
-  let pub =
-    Sparks_rss.Epub3.save_xhtml_doc pub article.Sparks_rss.Syndications.title
-      xhtml
-  in
+let write_chapter pub chapter =
+  let pub = Sparks_rss.Epub3.save_xhtml_doc pub chapter.title chapter.xhtml in
   List.fold_left
     (fun pub (path, mimetype, content) ->
       Sparks_rss.Epub3.save_support_doc pub path (epub_mimetype mimetype)
         content )
-    pub images
+    pub chapter.images
 
 let run output jobs webdriver_port feed_urls limit =
   let articles =
@@ -135,8 +167,7 @@ let run output jobs webdriver_port feed_urls limit =
       feed_urls
   in
   let limited_articles =
-    if limit > 0 then List.take limit articles
-    else articles
+    if limit > 0 then List.take limit articles else articles
   in
   if limited_articles = [] then
     failwith "The supplied feeds contained no linked articles" ;
@@ -146,19 +177,19 @@ let run output jobs webdriver_port feed_urls limit =
      in
      Lwt.finalize
        (fun () ->
-         Sparks_rss.Bounded.map_p ~max_concurrent:jobs
-           (fetch_article pool)
+         Sparks_rss.Bounded.map_p ~max_concurrent:jobs (fetch_article pool)
            limited_articles )
-       (fun () -> Sparks_rss.Webdriver.Pool.shutdown pool))
-  |> (* Publication built from the processed articles *)
-     (fun processed ->
-       let publication_id = Sparks_rss.Epub3.Uuid (Sparks_rss.Uuid.uuid4 ()) in
-       let publication =
-         Sparks_rss.Epub3.open_out_pub ~unique_id:publication_id
-           ~title:"Spark RSS Digest" ~ln:"en" ~opt_meta:[] output
-       in
-       List.fold_left2 write_article publication limited_articles processed
-       |> Sparks_rss.Epub3.close_pub )
+       (fun () -> Sparks_rss.Webdriver.Pool.shutdown pool) )
+  |>
+  (* Publication built from the processed articles *)
+  fun processed ->
+  let publication_id = Sparks_rss.Epub3.Uuid (Sparks_rss.Uuid.uuid4 ()) in
+  let publication =
+    Sparks_rss.Epub3.open_out_pub ~unique_id:publication_id
+      ~title:"Spark RSS Digest" ~ln:"en" ~opt_meta:[] output
+  in
+  List.fold_left write_chapter publication (List.concat processed)
+  |> Sparks_rss.Epub3.close_pub
 
 let () =
   try

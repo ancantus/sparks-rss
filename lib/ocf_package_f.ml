@@ -29,44 +29,44 @@ module Make (Xml : Xml_sigs.T) = struct
 
   let mediatype_to_text m =
     ( match m with
-    | `Gif ->
-        "image/gif"
-    | `Jpeg ->
-        "image/jpeg"
-    | `Png ->
-        "image/png"
-    | `Svg ->
-        "image/svg+xml"
-    | `Webp ->
-        "image/webp"
-    | `Mpeg ->
-        "audio/mpeg"
-    | `Mp4 ->
-        "audio/mp4"
-    | `Ogg_Opus ->
-        "audio/ogg; codecs=opus"
-    | `Css ->
-        "text/css"
-    | `Tff ->
-        "font/ttf"
-    | `Sfnt ->
-        "application/font-sfnt"
-    | `Otf ->
-        "font/otf"
-    | `Eot ->
-        "application/vnd.ms-opentype"
-    | `Woff ->
-        "font/woff"
-    | `Woff2 ->
-        "font/woff2"
-    | `Xhtml ->
-        "application/xhtml+xml"
-    | `Javascript ->
-        "application/javascript"
-    | `Ncx ->
-        "application/x-dtbncx+xml"
-    | `Smil ->
-        "application/smil+xml" )
+      | `Gif ->
+          "image/gif"
+      | `Jpeg ->
+          "image/jpeg"
+      | `Png ->
+          "image/png"
+      | `Svg ->
+          "image/svg+xml"
+      | `Webp ->
+          "image/webp"
+      | `Mpeg ->
+          "audio/mpeg"
+      | `Mp4 ->
+          "audio/mp4"
+      | `Ogg_Opus ->
+          "audio/ogg; codecs=opus"
+      | `Css ->
+          "text/css"
+      | `Tff ->
+          "font/ttf"
+      | `Sfnt ->
+          "application/font-sfnt"
+      | `Otf ->
+          "font/otf"
+      | `Eot ->
+          "application/vnd.ms-opentype"
+      | `Woff ->
+          "font/woff"
+      | `Woff2 ->
+          "font/woff2"
+      | `Xhtml ->
+          "application/xhtml+xml"
+      | `Javascript ->
+          "application/javascript"
+      | `Ncx ->
+          "application/x-dtbncx+xml"
+      | `Smil ->
+          "application/smil+xml" )
     |> Xml.W.return
 
   let prefix_to_string = function key, url -> key ^ ": " ^ url

@@ -76,6 +76,99 @@ let test_article_xhtml () =
        ~data:(fun _ -> ())
        (Xmlm.make_input (`String (0, xhtml))) )
 
+let test_hackernews_item_urls () =
+  let check_item expected url =
+    check
+      (Sparks_rss.Hackernews.is_item_url (Uri.of_string url) = expected)
+      (Printf.sprintf "Hacker News item detection failed for %s" url)
+  in
+  check_item true "https://news.ycombinator.com/item?id=41234567" ;
+  check_item true "http://news.ycombinator.com/item?id=1" ;
+  check_item true "https://news.ycombinator.com/item?id=41234567&p=2" ;
+  check_item false "https://news.ycombinator.com/item/" ;
+  check_item false "https://news.ycombinator.com/" ;
+  check_item false "https://news.ycombinator.com/user?id=who" ;
+  check_item false "https://news.ycombinator.com/item" ;
+  check_item false "https://news.ycombinator.com/item?id=abc" ;
+  check_item false "https://example.com/item?id=123" ;
+  check
+    ( Sparks_rss.Hackernews.item_id
+        (Uri.of_string "https://news.ycombinator.com/item?id=41234567")
+    = Some "41234567" )
+    "Hacker News item id should be extracted from item URLs"
+
+let test_soup_sanitization () =
+  let html =
+    "<html><body><article><table width='100%'><tr><td \
+     width='50'>cell</td></tr></table><p><a href='#missing'>broken</a> <a \
+     href='#ok'>works</a></p><h2 id='ok'>target</h2></article></body></html>"
+  in
+  let xhtml, _ =
+    Lwt_main.run
+      (Sparks_rss.Spark.extract_article ~title:"T" ~summary:""
+         ~url:"https://example.test/a" html )
+  in
+  check
+    (not (contains xhtml "width=\"100%\""))
+    "Non-integer width values should be dropped" ;
+  check (contains xhtml "width=\"50\"") "Integer widths should be kept" ;
+  check
+    (not (contains xhtml "href=\"#missing\""))
+    "Internal links without a target id should be unwrapped" ;
+  check (contains xhtml "href=\"#ok\"") "Valid internal links should be kept"
+
+let test_hackernews_comments () =
+  let html =
+    {|<html><body><table class="comment-tree">
+      <tr class="athing comtr" id="1"><td><table border="0"><tr>
+      <td class="ind" indent="0"><img src="s.gif" height="1" width="0"></td>
+      <td class="default"><div><span class="comhead"><a href="user?id=alice">alice</a>
+      <span class="age" title="2026-11-17T16:41:03"><a href="item?id=1">2 hours ago</a></span></span></div>
+      <div class="commtext c00"><p>First <a href="item?id=2">link</a> text</p></div></td></tr></table></td></tr>
+      <tr class="athing comtr" id="2"><td><table border="0"><tr>
+      <td class="ind" indent="1"><img src="s.gif" height="1" width="40"></td>
+      <td class="default"><div><span class="comhead"><a href="user?id=bob">bob</a>
+      <span class="age"><a href="item?id=2">1 day ago</a></span></span></div>
+      <div class="commtext c00">Second text</div></td></tr></table></td></tr>
+      <tr class="athing comtr" id="3"><td><table border="0"><tr>
+      <td class="default"><span class="comhead">[deleted]</span></td></tr></table></td></tr>
+      </table></body></html>|}
+  in
+  match Sparks_rss.Hackernews.parse_comments html with
+  | [first; second] ->
+      check (first.author = "alice") "HN comment author should be extracted" ;
+      check (first.age = "2 hours ago") "HN comment age should be extracted" ;
+      check
+        (contains first.text "First <a href=\"item?id=2\">link</a> text")
+        "HN comment body HTML should be preserved" ;
+      check (second.author = "bob") "HN comments should keep document order" ;
+      check (contains second.text "Second text") "HN comment body should be extracted"
+  | _ ->
+      failwith "Expected two parsed Hacker News comments"
+
+let test_comments_xhtml () =
+  let comments =
+    [ { Sparks_rss.Hackernews.author= "a & b"
+      ; age= "3 hours ago"
+      ; text= {|<p>Hi &amp; <a href="item?id=2">bye</a> &amp; bye</p>|} }
+    ; { Sparks_rss.Hackernews.author= "carol"
+      ; age= ""
+      ; text= "<p>Reply</p>" } ]
+  in
+  let xhtml = Sparks_rss.Spark.make_comments_xhtml ~title:"A & B" comments in
+  check (contains xhtml "Comments:") "Nope, comments should render" ;
+  check (contains xhtml "a &amp; b") "Comment authors should be escaped" ;
+  check (contains xhtml " · 3 hours ago") "Comment age should render" ;
+  check (contains xhtml "<hr") "Comments should be separated by rules" ;
+  check
+    (not (contains xhtml "hr></hr"))
+    "Separators should be void elements" ;
+  ignore
+    (Xmlm.input_doc_tree
+       ~el:(fun _ _ -> ())
+       ~data:(fun _ -> ())
+       (Xmlm.make_input (`String (0, xhtml))) )
+
 let test_bounded_parallelism () =
   let active = ref 0 and maximum = ref 0 in
   let results =
@@ -179,7 +272,11 @@ let test_epub_archive () =
 
 let () =
   test_rss_parser () ;
+  test_hackernews_item_urls () ;
+  test_hackernews_comments () ;
   test_image_handling () ;
   test_article_xhtml () ;
+  test_soup_sanitization () ;
+  test_comments_xhtml () ;
   test_bounded_parallelism () ;
   test_epub_archive ()
