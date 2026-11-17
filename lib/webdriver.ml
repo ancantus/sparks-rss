@@ -38,7 +38,7 @@ let webdriver_fetch_source wait_for_contents url =
    reader mode is driven by @mozilla/readability, so we instead run the
    vendored copy of that exact engine inside the loaded page and harvest the
    parsed article document. Pages that Readability cannot parse return [None]
-   and the caller should fall back to the raw page source. *)
+   and the caller treats extraction as failed. *)
 let readability_parse_script =
   Readability_js.readability_js
   ^ "\n\
@@ -177,8 +177,7 @@ module Pool = struct
     in
     let* drivers = setup 0 [||] in
     if Array.length drivers = 0 then
-      report
-        "No webdriver available; articles will be fetched over plain HTTP" ;
+      report "No WebDriver available; article extraction will fail" ;
     Lwt.return { drivers; cursor= 0 }
 
   let size pool = Array.length pool.drivers

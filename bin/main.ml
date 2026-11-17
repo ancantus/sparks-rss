@@ -3,44 +3,52 @@ open List
 
 let print_usage () =
   Printf.eprintf
-    "Usage: sparks_rss [-o OUTPUT.epub] [-j ARTICLES] [-w PORT] FEED_URL \
+    "Usage: sparks_rss [-o OUTPUT.epub] [-j ARTICLES] [-w PORT] [--limit N] FEED_URL \
      [FEED_URL ...]\n\
      Fetch RSS feeds, download their linked articles and create an EPUB.\n"
 
 let usage_error () = print_usage () ; exit 2
 
 let parse_args args =
-  let rec loop output jobs port urls = function
+  let rec loop output jobs port limit urls = function
     | [] ->
-        (output, jobs, port, List.rev urls)
+        (output, jobs, port, limit, List.rev urls)
     | ("-h" | "--help") :: _ ->
         print_usage () ; exit 0
     | ("-o" | "--output") :: path :: tail ->
-        loop path jobs port urls tail
+        loop path jobs port limit urls tail
     | ("-o" | "--output") :: [] ->
         usage_error ()
     | ("-j" | "--jobs") :: value :: tail ->
         let jobs = try int_of_string value with Failure _ -> usage_error () in
         if jobs < 1 then usage_error () ;
-        loop output jobs port urls tail
+        loop output jobs port limit urls tail
     | ("-j" | "--jobs") :: [] ->
         usage_error ()
     | ("-w" | "--webdriver-port") :: value :: tail ->
         let port = try int_of_string value with Failure _ -> usage_error () in
         if port < 1 then usage_error () ;
-        loop output jobs port urls tail
+        loop output jobs port limit urls tail
     | ("-w" | "--webdriver-port") :: [] ->
         usage_error ()
+    | "--limit" :: value :: tail ->
+        let limit = try int_of_string value with Failure _ -> usage_error () in
+        if limit < 0 then usage_error () ;
+        loop output jobs port limit urls tail
+    | "--limit" :: [] ->
+        usage_error ()
     | url :: tail ->
-        loop output jobs port (url :: urls) tail
+        loop output jobs port limit (url :: urls) tail
   in
   (* [-w] selects the base port of the webdriver pool: a server already
      answering on the port is reused, otherwise geckodriver is launched, up to
-     [--jobs] instances for concurrent extraction. Without a driver, articles
-     are fetched over plain HTTP. *)
-  let output, jobs, port, urls = loop "sparks-rss.epub" 4 4444 [] args in
+     [--jobs] instances for concurrent extraction. *)
+  let default_jobs = 2 * Domain.recommended_domain_count () in
+  let output, jobs, port, limit, urls =
+    loop "sparks-rss.epub" default_jobs 4444 0 [] args
+  in
   if urls = [] then usage_error () ;
-  (output, jobs, port, urls)
+  (output, jobs, port, limit, urls)
 
 let normalized_summary article =
   match article.Sparks_rss.Syndications.description with
@@ -51,72 +59,43 @@ let normalized_summary article =
 
 let fetch_article pool article =
   let title = article.Sparks_rss.Syndications.title in
-  let summary = normalized_summary article in
   let url = Uri.to_string article.link in
-  let stub kind =
-    Lwt.return (Sparks_rss.Spark.make_stub_xhtml ~title ~kind url, [])
-  in
-  let fallback () =
+  let placeholder exn =
+    let reason =
+      match Sparks_rss.Webdriver.describe_error exn with
+      | Some reason ->
+          reason
+      | None ->
+          Printexc.to_string exn
+    in
+    Printf.eprintf "[sparks_rss] Could not process %s: %s\n%!" url reason ;
     let xhtml =
-      Sparks_rss.Spark.make_article_xhtml ~title ~summary ~text:summary
+      Sparks_rss.Spark.make_article_xhtml ~title ~summary:""
+        ~text:("Article extraction failed. Source: " ^ url ^ "\n" ^ reason)
         ~images:[]
     in
     Lwt.return (xhtml, [])
   in
-  let http_extract () =
-    Lwt.catch
-      (fun () ->
-        let* response = Sparks_rss.Http.fetch_url url in
-        match response with
-        | Some (content, Some mimetype) -> (
-          match Sparks_rss.Spark.stub_kind_of_mimetype mimetype with
-          | Some kind ->
-              stub kind
+  Lwt.catch
+    (fun () ->
+      let summary = normalized_summary article in
+      match
+        Sparks_rss.Spark.stub_kind_of_uri article.Sparks_rss.Syndications.link
+      with
+      | Some kind ->
+          Lwt.return (Sparks_rss.Spark.make_stub_xhtml ~title ~kind url, [])
+      | None ->
+          let* source =
+            Sparks_rss.Webdriver.Pool.fetch_source pool
+              article.Sparks_rss.Syndications.link
+          in
+          ( match source with
           | None ->
-              Sparks_rss.Spark.extract_article ~title ~summary ~url content )
-        | Some (content, None) ->
-            Sparks_rss.Spark.extract_article ~title ~summary ~url content
-        | None ->
-            fallback () )
-      (fun _ -> fallback ())
-  in
-  let webdriver_extract () =
-    Lwt.catch
-      (fun () ->
-        let* source =
-          Sparks_rss.Webdriver.Pool.fetch_source pool
-            article.Sparks_rss.Syndications.link
-        in
-        match source with
-        | None ->
-            http_extract ()
-        | Some soup ->
-            (* Firefox reader mode embeds the article in a readability content
-               node; fall back to the whole document if it cannot be found. *)
-            Sparks_rss.Spark.extract_article ~title ~summary ~url
-              (Sparks_rss.Spark.reader_page_contents soup) )
-      (fun exn ->
-        (* No WebDriver server or browser: process the article over plain HTTP. *)
-        let reason =
-          match Sparks_rss.Webdriver.describe_error exn with
-          | Some reason ->
-              reason
-          | None ->
-              Printexc.to_string exn
-        in
-        Printf.eprintf
-          "[sparks_rss] WebDriver unavailable (%s), using plain HTTP for %s\n"
-          reason url ;
-        http_extract () )
-  in
-  match
-    Sparks_rss.Spark.stub_kind_of_uri article.Sparks_rss.Syndications.link
-  with
-  | Some kind ->
-      stub kind
-  | None ->
-      if Sparks_rss.Webdriver.Pool.size pool = 0 then http_extract ()
-      else webdriver_extract ()
+              Lwt.fail_with "WebDriver returned no article document"
+          | Some soup ->
+              Sparks_rss.Spark.extract_article ~title ~summary ~url
+                (Sparks_rss.Spark.reader_page_contents soup) ) )
+    placeholder
 
 let epub_mimetype = function
   | "image/gif" ->
@@ -178,15 +157,15 @@ let run output jobs webdriver_port feed_urls limit =
          Sparks_rss.Epub3.open_out_pub ~unique_id:publication_id
            ~title:"Spark RSS Digest" ~ln:"en" ~opt_meta:[] output
        in
-       List.fold_left2 write_article publication articles processed
+       List.fold_left2 write_article publication limited_articles processed
        |> Sparks_rss.Epub3.close_pub )
 
 let () =
   try
-    let output, jobs, webdriver_port, feed_urls =
+    let output, jobs, webdriver_port, limit, feed_urls =
       parse_args (List.tl (Array.to_list Sys.argv))
     in
-    run output jobs webdriver_port feed_urls
+    run output jobs webdriver_port feed_urls limit
   with exn ->
     Printf.eprintf "sparks_rss: %s\n" (Printexc.to_string exn) ;
     exit 1
