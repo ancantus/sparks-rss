@@ -17,8 +17,12 @@ depends: [
   "rss"
   "tyxml"
   "camlzip"
+  "lwt"
   "lwt_ssl"
+  "zipc"
+  "yojson"
   "webdriver_cohttp-lwt-unix"
+  "xmlm" {with-test}
   "odoc" {with-doc}
 ]
 build: [
