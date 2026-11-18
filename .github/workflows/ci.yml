@@ -8,6 +8,7 @@ on:
 
 env:
   OPAM_ENV: ""
+  PATH: /opt/bin:$PATH
 
 jobs:
   build:
@@ -18,26 +19,48 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
       
-      - name: Download OCaml 5.5 and Dune binary
+      - name: Install required system packages
         run: |
-          wget https://github.com/ocaml/ocaml-windows/releases/download/v5.5.0-bin/ocaml-5.5.0-x86_64-linux.tar.gz -O /tmp/ocaml-installer.tar.gz
-          tar -xzf /tmp/ocaml-installer.tar.gz -C /opt
+          apt-get update && apt-get install -y --no-install-recommends \
+            wget \
+            curl \
+            ca-certificates
+
+      - name: Download and extract OCaml 5.5
+        run: |
+          set -e
+          
+          cd /opt
+          
+          # Download Linux x86_64 OCaml 5.5 binaries
+          echo "Downloading OCaml..."
+          wget https://github.com/ocaml/ocaml-binaries/releases/download/v5.5.0-1/ocaml-5.5.0-x86_64-linux.tar.gz -O /tmp/ocaml.tgz 2>&1 || {
+            echo "wget failed, trying curl..."
+            curl --fail -L https://github.com/ocaml/ocaml-binaries/releases/download/v5.5.0-1/ocaml-5.5.0-x86_64-linux.tar.gz -o /tmp/ocaml.tgz 2>&1 || {
+              echo "Both wget and curl failed. Cannot proceed without OCaml."
+              exit 1
+            }
+          }
+          
+          echo "Extracting..."
+          tar -xzf /tmp/ocaml.tgz --strip-components=0
       
       - name: Verify OCaml installation
         run: |
-          export PATH=/opt/bin:$PATH
-          
           echo "OCaml compiler version:"
-          ocamlc --version 2>&1 || echo "ocamlc not found"
+          ocamlc --version
           
           echo "Dune version:"
-          dune --version 2>&1 || echo "dune not found"
+          dune --version
       
-      - name: Install opam with OCaml 5.5
+      - name: Install opam
         run: |
-          export PATH=/opt/bin:$PATH
-          eval $(opam init --desktop=false --disable-scope)
-          
+          echo "Installing opam..."
+          curl https://raw.githubusercontent.com/ocaml/opam/master/install.sh -sSf | sh -s -- --bare
+      
+      - name: Install project dependencies with opam
+        run: |
+          eval $(opam env)
           opam install . --deps-only
       
       - name: Build project with dune
@@ -47,32 +70,20 @@ jobs:
       
       - name: Format check with ocamlformat (optional)
         run: |
-          export PATH=/opt/bin:$PATH
-          
-          if ! command -v ocamlformat &> /dev/null; then
-            echo "⚠ ocamlformat not found, skipping formatting check"
-          else
-            find . -type f \( -name "*.ml" -o -name "*.mli" \) ! -path "./node_modules/*" ! -path "*/build/*" | while read -r file; do
-              if ocamlformat --diff "$file" > /dev/null 2>&1; then
-                echo "✓ Formatted: $file"
-              else
-                echo "✗ Formatting issue found in: $file"
-                exit 1
-              fi
-            done
-          fi
+          find . -type f \( -name "*.ml" -o -name "*.mli" \) ! -path "./node_modules/*" ! -path "*/build/*" | while read -r file; do
+            if ocamlformat --diff "$file" > /dev/null 2>&1; then
+              echo "✓ Formatted: $file"
+            else
+              echo "✗ Formatting issue found in: $file"
+              exit 1
+            fi
+          done
       
       - name: Type check with ocamloban (optional)
         run: |
-          export PATH=/opt/bin:$PATH
-          
-          if ! command -v ocamloban &> /dev/null; then
-            echo "⚠ ocamloban not found, skipping type check"
-          else
-            find . -type f \( -name "*.ml" -o -name "*.mli" \) ! -path "./node_modules/*" ! -path "*/build/*" | while read -r file; do
-              if ! ocamloban "$file"; then
-                echo "✗ Type checking error found in: $file"
-                exit 1
-              fi
-            done
-          fi
+          find . -type f \( -name "*.ml" -o -name "*.mli" \) ! -path "./node_modules/*" ! -path "*/build/*" | while read -r file; do
+            if ! ocamloban "$file"; then
+              echo "✗ Type checking error found in: $file"
+              exit 1
+            fi
+          done
