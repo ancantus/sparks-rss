@@ -1,0 +1,48 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# Only one run per branch at a time: a new push to main (or to a PR's
+# branch) cancels any in-progress/pending run for that same branch.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Caches the opam switch (including the compiler) by default, so
+      # re-runs skip the expensive OCaml setup when nothing changed.
+      - uses: ocaml/setup-ocaml@v3
+        with:
+          # Resolves to the latest 5.5.x release; pin e.g. "5.5.2" if you
+          # want an exact compiler version.
+          ocaml-compiler: 5.5
+
+      - name: Install dependencies
+        run: opam install . --deps-only --with-test
+
+      # Must match the version pinned in .ocamlformat
+      - name: Install ocamlformat
+        run: opam install ocamlformat.0.29.0
+
+      - name: Build
+        run: opam exec -- dune build
+
+      - name: Test
+        run: opam exec -- dune runtest
+
+      # Fails and prints a diff if ocamlformat (or dune file formatting)
+      # would make any changes. No --auto-promote, so nothing is rewritten.
+      - name: Check formatting
+        run: opam exec -- dune build @fmt
+
+      - name: Lint opam file
+        run: opam lint sparks_rss.opam
