@@ -500,7 +500,11 @@ let make_comments_xhtml ~title comments =
   let comment_block comment =
     let head =
       H.p ~a:[H.Unsafe.string_attrib "style" header_style]
-        [ H.txt comment.Comments.author
+        [ H.txt
+            (comment.Comments.author
+            ^ Option.fold ~none:""
+                ~some:(fun parent -> " @" ^ parent)
+                comment.Comments.reply_to)
         ; H.txt
             (if comment.Comments.age = "" then ""
              else " · " ^ comment.Comments.age) ]

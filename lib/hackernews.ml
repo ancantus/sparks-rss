@@ -27,6 +27,8 @@ let is_item_url uri = item_id uri |> Option.is_some
 
 type comment = Comments.t
 
+type parsed_comment = { depth : int; comment : comment }
+
 let text_of node = String.trim (String.concat "" (Soup.texts node))
 
 (* One comment is a [tr.athing.comtr] row: the author and age live in the
@@ -54,9 +56,23 @@ let parse_comment row =
         | None ->
             ""
       in
+      let depth =
+        match Soup.select_one "td.ind" row with
+        | Some indent -> (
+          match Soup.attribute "indent" indent with
+          | Some depth -> (try int_of_string depth with _ -> 0)
+          | None -> 0 )
+        | None -> 0
+      in
       match author with
       | Some author ->
-          Some {Comments.author; age; text= Soup.to_string body}
+          Some
+            { depth
+            ; comment=
+                { Comments.author
+                ; reply_to= None
+                ; age
+                ; text= Soup.to_string body } }
       | None ->
           None )
   | _ ->
@@ -65,6 +81,21 @@ let parse_comment row =
 let parse_comments html =
   Soup.parse html |> Soup.select "tr.athing.comtr" |> Soup.to_list
   |> List.filter_map parse_comment
+  |> List.fold_left
+       (fun (comments, prior_authors) parsed ->
+         let parent_depth = parsed.depth - 1 in
+         let reply_to =
+           if parent_depth < 0 then None
+           else List.assoc_opt parent_depth prior_authors
+         in
+         let comment = {parsed.comment with Comments.reply_to} in
+         let prior_authors =
+           (parsed.depth, comment.author)
+           :: List.filter (fun (depth, _) -> depth < parsed.depth) prior_authors
+         in
+         (comment :: comments, prior_authors) )
+       ([], [])
+  |> fst |> List.rev
 
 (* The item page is fetched once and parsed whole. Hacker News currently
    serves every comment of the thread in that first response; if it ever
