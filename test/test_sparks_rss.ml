@@ -142,7 +142,9 @@ let test_hackernews_comments () =
         (contains first.text "First <a href=\"item?id=2\">link</a> text")
         "HN comment body HTML should be preserved" ;
       check (second.author = "bob") "HN comments should keep document order" ;
-      check (contains second.text "Second text") "HN comment body should be extracted"
+      check
+        (contains second.text "Second text")
+        "HN comment body should be extracted"
   | _ ->
       failwith "Expected two parsed Hacker News comments"
 
@@ -152,7 +154,8 @@ let test_lobsters_comment_author () =
   in
   match Sparks_rss.Lobsters.parse_comments html with
   | [parent; reply] ->
-      check (parent.author = "alice") "Lobsters author should use username link text" ;
+      check (parent.author = "alice")
+        "Lobsters author should use username link text" ;
       check
         (reply.author = "bob" && reply.reply_to = Some "alice")
         "Lobsters replies should parse their author and direct parent"
@@ -175,9 +178,7 @@ let test_comments_xhtml () =
   check (contains xhtml "a &amp; b") "Comment authors should be escaped" ;
   check (contains xhtml " · 3 hours ago") "Comment age should render" ;
   check (contains xhtml "<hr") "Comments should be separated by rules" ;
-  check
-    (not (contains xhtml "hr></hr"))
-    "Separators should be void elements" ;
+  check (not (contains xhtml "hr></hr")) "Separators should be void elements" ;
   ignore
     (Xmlm.input_doc_tree
        ~el:(fun _ _ -> ())

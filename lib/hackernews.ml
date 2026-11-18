@@ -27,7 +27,7 @@ let is_item_url uri = item_id uri |> Option.is_some
 
 type comment = Comments.t
 
-type parsed_comment = { depth : int; comment : comment }
+type parsed_comment = {depth: int; comment: comment}
 
 let text_of node = String.trim (String.concat "" (Soup.texts node))
 
@@ -36,17 +36,18 @@ let text_of node = String.trim (String.concat "" (Soup.texts node))
    link) and the body in a [div.commtext]. Rows missing either, such as
    deleted comments, are skipped. *)
 let parse_comment row =
-  match (Soup.select_one "span.comhead" row, Soup.select_one "div.commtext" row)
+  match
+    (Soup.select_one "span.comhead" row, Soup.select_one "div.commtext" row)
   with
   | Some header, Some body -> (
       let author =
         Soup.select "a" header |> Soup.to_list
         |> List.find_opt (fun link ->
-               match Soup.attribute "href" link with
-               | Some href ->
-                   String.starts_with ~prefix:"user?id=" href
-               | None ->
-                   false )
+            match Soup.attribute "href" link with
+            | Some href ->
+                String.starts_with ~prefix:"user?id=" href
+            | None ->
+                false )
         |> Option.map text_of
       in
       let age =
@@ -60,26 +61,29 @@ let parse_comment row =
         match Soup.select_one "td.ind" row with
         | Some indent -> (
           match Soup.attribute "indent" indent with
-          | Some depth -> (try int_of_string depth with _ -> 0)
-          | None -> 0 )
-        | None -> 0
+          | Some depth -> (
+            try int_of_string depth with _ -> 0 )
+          | None ->
+              0 )
+        | None ->
+            0
       in
       match author with
       | Some author ->
           Some
             { depth
             ; comment=
-                { Comments.author
-                ; reply_to= None
-                ; age
-                ; text= Soup.to_string body } }
+                {Comments.author; reply_to= None; age; text= Soup.to_string body}
+            }
       | None ->
           None )
   | _ ->
       None
 
 let parse_comments html =
-  Soup.parse html |> Soup.select "tr.athing.comtr" |> Soup.to_list
+  Soup.parse html
+  |> Soup.select "tr.athing.comtr"
+  |> Soup.to_list
   |> List.filter_map parse_comment
   |> List.fold_left
        (fun (comments, prior_authors) parsed ->

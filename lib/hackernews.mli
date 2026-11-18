@@ -6,10 +6,10 @@ val item_id : Uri.t -> string option
 (* [item_id uri] is the Hacker News item id of [uri] when [is_item_url uri].
    Useful for alternative comment sources such as the Algolia API. *)
 
-type comment = Comments.t
 (** One comment of a Hacker News thread. [text] is the raw HTML of the comment
     body; [age] is the site's own rendering of the comment time and may be
     empty. *)
+type comment = Comments.t
 
 val parse_comments : string -> comment list
 (* [parse_comments html] extracts the comments rendered on a Hacker News item

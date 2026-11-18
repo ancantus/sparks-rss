@@ -111,11 +111,11 @@ let fetch_article_chapter pool article =
 
 (* Comments from supported aggregators follow their article as extra chapters. *)
 let comment_sources : (module Sparks_rss.Comments.SOURCE) list =
-  [ (module Sparks_rss.Hackernews); (module Sparks_rss.Lobsters) ]
+  [(module Sparks_rss.Hackernews); (module Sparks_rss.Lobsters)]
 
 let fetch_comments_chapters article =
   match article.Sparks_rss.Syndications.comments with
-  | Some comments ->
+  | Some comments -> (
       let title = "Comments: " ^ article.Sparks_rss.Syndications.title in
       let rec find_source = function
         | [] ->
@@ -125,7 +125,7 @@ let fetch_comments_chapters article =
               Some (module Source : Sparks_rss.Comments.SOURCE)
             else find_source tail
       in
-      ( match find_source comment_sources with
+      match find_source comment_sources with
       | None ->
           Lwt.return []
       | Some (module Source) -> (
