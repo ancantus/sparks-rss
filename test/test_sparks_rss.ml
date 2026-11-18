@@ -148,10 +148,10 @@ let test_hackernews_comments () =
 
 let test_comments_xhtml () =
   let comments =
-    [ { Sparks_rss.Hackernews.author= "a & b"
+    [ { Sparks_rss.Comments.author= "a & b"
       ; age= "3 hours ago"
       ; text= {|<p>Hi &amp; <a href="item?id=2">bye</a> &amp; bye</p>|} }
-    ; { Sparks_rss.Hackernews.author= "carol"
+    ; { Sparks_rss.Comments.author= "carol"
       ; age= ""
       ; text= "<p>Reply</p>" } ]
   in

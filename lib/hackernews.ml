@@ -25,7 +25,7 @@ let item_id uri =
 
 let is_item_url uri = item_id uri |> Option.is_some
 
-type comment = { author : string; age : string; text : string }
+type comment = Comments.t
 
 let text_of node = String.trim (String.concat "" (Soup.texts node))
 
@@ -56,7 +56,7 @@ let parse_comment row =
       in
       match author with
       | Some author ->
-          Some {author; age; text= Soup.to_string body}
+          Some {Comments.author; age; text= Soup.to_string body}
       | None ->
           None )
   | _ ->
