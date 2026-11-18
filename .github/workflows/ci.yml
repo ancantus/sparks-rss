@@ -7,9 +7,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Install opam binary directly (no system packages needed)
-        run: |
-          # Download and install opam to user home directory
-          curl --silent https://opam.ocaml.org/install.sh -o /tmp/install.sh && \
-          chmod +x /tmp/install.sh && \
-          sh /tmp/install.sh
+      - name: Set up Dune with pkg mode
+        uses: ocaml-dune/setup-dune@v2
+        with:
+          version: nightly
+          steps: pkg enable build install-deps
