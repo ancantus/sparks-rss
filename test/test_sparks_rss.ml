@@ -149,9 +149,11 @@ let test_hackernews_comments () =
 let test_comments_xhtml () =
   let comments =
     [ { Sparks_rss.Comments.author= "a & b"
+      ; reply_to= None
       ; age= "3 hours ago"
       ; text= {|<p>Hi &amp; <a href="item?id=2">bye</a> &amp; bye</p>|} }
     ; { Sparks_rss.Comments.author= "carol"
+      ; reply_to= None
       ; age= ""
       ; text= "<p>Reply</p>" } ]
   in

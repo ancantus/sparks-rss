@@ -20,7 +20,7 @@ let is_item_url uri =
 
 let text_of node = String.trim (String.concat "" (Soup.texts node))
 
-let parse_comment node =
+let parse_comment ~reply_to node =
   match
     (Soup.select_one ".byline" node, Soup.select_one "time" node,
      Soup.select_one ".comment_text" node)
@@ -37,18 +37,50 @@ let parse_comment node =
       Option.map
         (fun author ->
           let age = Option.fold ~none:"" ~some:text_of time in
-          {Comments.author= author; age; text= Soup.to_string body} )
+          {Comments.author= author; reply_to; age; text= Soup.to_string body} )
         author
   | _ ->
       None
 
 let parse_comments html =
-  Soup.parse html |> Soup.select "div" |> Soup.to_list
-  |> List.filter (fun node ->
-         match Soup.attribute "id" node with
-         | Some id -> String.starts_with ~prefix:"c_" id
-         | None -> false )
-  |> List.filter_map parse_comment
+  let comment_nodes =
+    Soup.parse html |> Soup.select "div" |> Soup.to_list
+    |> List.filter (fun node ->
+           match Soup.attribute "id" node with
+           | Some id -> String.starts_with ~prefix:"c_" id
+           | None -> false )
+  in
+  let author_by_id = Hashtbl.create (List.length comment_nodes) in
+  let comment_id node =
+    Option.bind (Soup.attribute "id" node) (fun id ->
+        if String.starts_with ~prefix:"c_" id then Some id else None )
+  in
+  let rec parent_id node =
+    match Soup.parent node with
+    | None ->
+        None
+    | Some parent -> (
+      match comment_id parent with
+      | Some id ->
+          Some id
+      | None ->
+          parent_id parent )
+  in
+  List.fold_left
+    (fun comments node ->
+      let reply_to =
+        Option.bind (parent_id node) (Hashtbl.find_opt author_by_id)
+      in
+      match parse_comment ~reply_to node with
+      | None ->
+          comments
+      | Some comment ->
+          Option.iter
+            (fun id -> Hashtbl.replace author_by_id id comment.Comments.author)
+            (comment_id node) ;
+          comment :: comments )
+    [] comment_nodes
+  |> List.rev
 
 let fetch_comments uri =
   match Ezcurl.get ~url:(Uri.to_string uri) () with
