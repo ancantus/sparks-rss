@@ -6,66 +6,22 @@ on:
   pull_request:
     branches: [main]
 
-env:
-  OPAM_ENV: ""
-  PATH: /opt/bin:$PATH
-
 jobs:
   build:
     name: Build Check
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
     
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
       
-      - name: Install required system packages
-        run: |
-          apt-get update && apt-get install -y --no-install-recommends \
-            wget \
-            curl \
-            ca-certificates
+      - name: Setup OCaml with Dune
+        uses: ocaml/setup-ocaml@v3
+        with:
+          version: '5.5'
+          opam_repo: 'https://github.com/ocaml/opam-repos.git'
+          add_to_path: 'yes'
 
-      - name: Install tar utility
-        run: |
-          apt-get update && apt-get install -y --no-install-recommends \
-            ca-certificates \
-            wget \
-            curl \
-            tar
-
-      - name: Download and extract OCaml 5.5
-        run: |
-          set -e
-          
-          cd /opt
-          
-          # Download Linux x86_64 OCaml 5.5 binaries
-          echo "Downloading OCaml..."
-          wget https://github.com/ocaml/ocaml-binaries/releases/download/v5.5.0-1/ocaml-5.5.0-x86_64-linux.tar.gz -O /tmp/ocaml.tgz 2>&1 || {
-            echo "wget failed, trying curl..."
-            curl --fail -L https://github.com/ocaml/ocaml-binaries/releases/download/v5.5.0-1/ocaml-5.5.0-x86_64-linux.tar.gz -o /tmp/ocaml.tgz 2>&1 || {
-              echo "Both wget and curl failed. Cannot proceed without OCaml."
-              exit 1
-            }
-          }
-          
-          echo "Extracting..."
-          tar -xzf /tmp/ocaml.tgz --strip-components=0
-      
-      - name: Verify OCaml installation
-        run: |
-          echo "OCaml compiler version:"
-          ocamlc --version
-          
-          echo "Dune version:"
-          dune --version
-      
-      - name: Install opam
-        run: |
-          echo "Installing opam..."
-          curl https://raw.githubusercontent.com/ocaml/opam/master/install.sh -sSf | sh -s -- --bare
-      
       - name: Install project dependencies with opam
         run: |
           eval $(opam env)
