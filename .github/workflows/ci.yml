@@ -59,18 +59,3 @@ jobs:
               fi
             done
           fi
-      
-      - name: Build test with dune (optional)
-        run: |
-          eval $(opam env)
-          
-          if ! command -v dune &> /dev/null; then
-            echo "⚠ dune not found, skipping test build"
-          else
-            find . -type f \( -name "*.ml" -o -name "*.mli" \) ! -path "./node_modules/*" ! -path "*/build/*" | while read -r file; do
-              if ! ocamloban "$file"; then
-                echo "✗ Type checking error found in: $file"
-                exit 1
-              fi
-            done
-          fi
