@@ -110,21 +110,36 @@ let fetch_article_chapter pool article =
     placeholder
 
 (* Comments from supported aggregators follow their article as extra chapters. *)
+let comment_sources : (module Sparks_rss.Comments.SOURCE) list =
+  [ (module Sparks_rss.Hackernews); (module Sparks_rss.Lobsters) ]
+
 let fetch_comments_chapters article =
   match article.Sparks_rss.Syndications.comments with
-  | Some comments when Sparks_rss.Hackernews.is_item_url comments ->
+  | Some comments ->
       let title = "Comments: " ^ article.Sparks_rss.Syndications.title in
-      ( match Sparks_rss.Hackernews.fetch_comments comments with
+      let rec find_source = function
+        | [] ->
+            None
+        | (module Source : Sparks_rss.Comments.SOURCE) :: tail ->
+            if Source.is_item_url comments then
+              Some (module Source : Sparks_rss.Comments.SOURCE)
+            else find_source tail
+      in
+      ( match find_source comment_sources with
       | None ->
-          Printf.eprintf "[sparks_rss] Could not fetch comments %s\n%!"
-            (Uri.to_string comments) ;
           Lwt.return []
-      | Some parsed ->
-          Lwt.return
-            [ { title
-              ; xhtml= Sparks_rss.Spark.make_comments_xhtml ~title parsed
-              ; images= [] } ] )
-  | _ ->
+      | Some (module Source) -> (
+        match Source.fetch_comments comments with
+        | None ->
+            Printf.eprintf "[sparks_rss] Could not fetch comments %s\n%!"
+              (Uri.to_string comments) ;
+            Lwt.return []
+        | Some parsed ->
+            Lwt.return
+              [ { title
+                ; xhtml= Sparks_rss.Spark.make_comments_xhtml ~title parsed
+                ; images= [] } ] ) )
+  | None ->
       Lwt.return []
 
 let fetch_article pool article =

@@ -500,14 +500,14 @@ let make_comments_xhtml ~title comments =
   let comment_block comment =
     let head =
       H.p ~a:[H.Unsafe.string_attrib "style" header_style]
-        [ H.txt comment.Hackernews.author
+        [ H.txt comment.Comments.author
         ; H.txt
-            (if comment.Hackernews.age = "" then ""
-             else " · " ^ comment.Hackernews.age) ]
+            (if comment.Comments.age = "" then ""
+             else " · " ^ comment.Comments.age) ]
       |> fun element -> render_xhtml_elements [element]
     in
     let body =
-      Soup.parse comment.Hackernews.text |> Soup.coerce |> soup_to_xhtml
+      Soup.parse comment.Comments.text |> Soup.coerce |> soup_to_xhtml
       |> render_xhtml_elements
     in
     "<div>" ^ head ^ body ^ "</div>"

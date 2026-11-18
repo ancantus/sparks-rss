@@ -76,15 +76,15 @@ make build
 dune exec sparks_rss -- --output digest.epub --jobs 4 FEED_URL [FEED_URL ...]
 ```
 
-### Comment threads (Hacker News)
+### Comment threads (Hacker News and Lobsters)
 
-Articles whose RSS `<comments>` link points at a Hacker News item
-(`news.ycombinator.com/item?id=…`, detected by `lib/hackernews.ml`) get a
-second chapter, `Comments: <article title>`, saved immediately after the
-article. The comment thread page is fetched through the same Firefox reader
-mode pipeline, so the rendered content is whatever reader mode produces. When
-the comments page cannot be extracted, the article is still published and a
-warning is printed; comments from other aggregators are not supported yet.
+Articles whose RSS `<comments>` link points at a Hacker News item or Lobsters
+story (`lobste.rs/s/<short_id>`, detected by `lib/lobsters.ml`) get a second
+chapter, `Comments: <article title>`, saved immediately after the article.
+Each aggregator implements the shared `Comments.SOURCE` interface, and the
+renderer consumes the common flattened comment type. If a supported comments
+page cannot be fetched, the article is still published and a warning is
+printed.
 
 ### Firefox reader mode extraction (required)
 
