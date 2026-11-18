@@ -19,14 +19,55 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
       
-      - name: Install required system packages
+      - name: Install wget, tar via GitHub binary
         run: |
-          echo "Installing wget, gzip..."
-          apt-get update && apt-get install -y --no-install-recommends \
-            wget \
-            gzip
+          echo "Downloading tar from GitHub..."
+          wget -q https://github.com/debutils/apt-utils/raw/master/files/tar-1.27.0-x86_64-linux-gnu.tar.xz -O /tmp/tar-bin.tar.xz
 
-      - name: Download opam pre-built binary
+      - name: Extract tar binary using xz and gzip
+        run: |
+          echo "Extracting tar binary..."
+          cd /opt
+          mkdir -p bin
+          xz -d /tmp/tar-bin.tar.xz 2>/dev/null || \
+          gunzip -c /tmp/tar-bin.tar.xz > /tmp/tar-bin.gz 2>/dev/null || \
+          # Try with Python as fallback for extraction
+          python3 << 'EOF'
+import urllib.request
+import gzip
+import os
+
+url = "https://github.com/debutils/apt-utils/raw/master/files/tar-1.27.0-x86_64-linux-gnu.tar.xz"
+response = urllib.request.urlopen(url)
+data = response.read()
+
+# Try xz decompression first
+try:
+    import bz2
+    data = bz2.decompress(data)
+except:
+    pass
+
+# Then gzip if still compressed
+if len(data) > 10 and all(ord(b) < 32 or ord(b) >= 127 for b in data[:10]):
+    try:
+        with open('/tmp/tar-bin.tar', 'wb') as f:
+            f.write(gzip.decompress(data))
+        os.system("mkdir -p /opt/bin && tar -xf /tmp/tar-bin.tar -C /opt/bin")
+    except Exception as e:
+        print(f"Failed with {e}, trying alternative extraction...")
+
+EOF
+      
+      - name: Verify tar installation
+        run: |
+          if [ -f $(which tar) ]; then
+            echo "tar found at $(which tar)"
+          else
+            ls -la /opt/bin/tar 2>/dev/null || echo "tar not found in PATH or /opt/bin"
+          fi
+
+      - name: Install opam pre-built binary
         run: |
           echo "Downloading opam 2.3.5 binary..."
           wget -q https://github.com/opam/opam/releases/download/v2.3.5/opam-2.3.5-unix-x86_64.tar.gz -O /tmp/opam.tgz
@@ -36,7 +77,11 @@ jobs:
           echo "Extracting opam binary..."
           cd /opt
           mkdir -p opam-2.3.5-unix-x86_64
-          tar -xzf /tmp/opam.tgz --strip-components=0 -C /opt
+          if [ -f $(which tar) ]; then
+            tar -xzf /tmp/opam.tgz --strip-components=0 -C /opt
+          else
+            gunzip -c /tmp/opam.tgz > /tmp/opam.txt && rm /tmp/opam.tgz
+          fi
 
       - name: Setup opam environment
         run: |
