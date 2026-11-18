@@ -19,32 +19,36 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
       
-      - name: Install wget, tar for opam binary installation
+      - name: Install required system packages
         run: |
-          echo "Installing tar and wget..."
+          echo "Installing wget, gzip..."
           apt-get update && apt-get install -y --no-install-recommends \
             wget \
-            tar \
-            ca-certificates
+            gzip
 
-      - name: Download and install opam binary
+      - name: Download opam pre-built binary
         run: |
           echo "Downloading opam 2.3.5 binary..."
           wget -q https://github.com/opam/opam/releases/download/v2.3.5/opam-2.3.5-unix-x86_64.tar.gz -O /tmp/opam.tgz
+
+      - name: Extract opam binary using gzip and tar
+        run: |
+          echo "Extracting opam binary..."
+          cd /opt
+          mkdir -p opam-2.3.5-unix-x86_64
           tar -xzf /tmp/opam.tgz --strip-components=0 -C /opt
-          
+
+      - name: Setup opam environment
+        run: |
           echo "Verifying opam installation..."
           export OPAM_BIN=/opt/opam-2.3.5-unix-x86_64/bin
           $OPAM_BIN/opam --version
-      
-      - name: Setup opam environment
-        run: |
           eval $(opam env)
 
       - name: Install OCaml and dependencies via opam
         run: |
           eval $(opam env)
-          opam install ocaml@5.5 dune@3.* ocamlfmt ocamloban
+          opam install ocaml@5.5 dune@3.* ocamlformat ocamloban
 
       - name: Install project dependencies with opam
         run: |
