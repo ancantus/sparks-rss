@@ -27,8 +27,12 @@
   rss
   tyxml
   camlzip
+  lwt
   lwt_ssl
-  webdriver_cohttp-lwt-unix)
+  zipc
+  yojson
+  webdriver_cohttp-lwt-unix
+  (xmlm :with-test))
  (tags
   (topics "to describe" your project)))
 
