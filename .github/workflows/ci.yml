@@ -26,18 +26,8 @@ jobs:
           # want an exact compiler version.
           ocaml-compiler: 5.5
 
-      # Not published on opam; pinned locally to this git repo.
-      - name: Pin webdriver
-        run: |
-          opam pin add webdriver git+https://github.com/art-w/ocaml-webdriver.git --yes
-          opam pin add webdriver_cohttp-lwt-unix git+https://github.com/art-w/ocaml-webdriver.git --yes
-
       - name: Install dependencies
-        run: opam install . --deps-only --with-test
-
-      # Must match the version pinned in .ocamlformat
-      - name: Install ocamlformat
-        run: opam install ocamlformat.0.29.0
+        run: opam install . --deps-only --with-test --with-dev-setup
 
       - name: Build
         run: opam exec -- dune build

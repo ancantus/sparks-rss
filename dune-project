@@ -32,7 +32,8 @@
   zipc
   yojson
   webdriver_cohttp-lwt-unix
-  (xmlm :with-test))
+  (xmlm :with-test)
+  (ocamlformat (and :with-dev-setup (= 0.29.0))))
  (tags
   (topics "to describe" your project)))
 
