@@ -26,6 +26,14 @@ jobs:
             curl \
             ca-certificates
 
+      - name: Install tar utility
+        run: |
+          apt-get update && apt-get install -y --no-install-recommends \
+            ca-certificates \
+            wget \
+            curl \
+            tar
+
       - name: Download and extract OCaml 5.5
         run: |
           set -e
