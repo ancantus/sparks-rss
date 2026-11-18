@@ -18,33 +18,26 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
       
-      - name: Install OCaml 5.5 and opam manually
+      - name: Download OCaml 5.5 and Dune binary
         run: |
-          apt-get update
-          
-          # Install ocaml, dune, and ocamloban without sudo dependencies
-          apt-get install -y --no-install-recommends \
-            libncurses5 \
-            ocaml-compiler-5.5 \
-            dune \
-            ocamloban \
-            make \
-            gnu-readline-dev
+          wget https://github.com/ocaml/ocaml-windows/releases/download/v5.5.0-bin/ocaml-5.5.0-x86_64-linux.tar.gz -O /tmp/ocaml-installer.tar.gz
+          tar -xzf /tmp/ocaml-installer.tar.gz -C /opt
       
-      - name: Verify tools installation
+      - name: Verify OCaml installation
         run: |
+          export PATH=/opt/bin:$PATH
+          
           echo "OCaml compiler version:"
           ocamlc --version 2>&1 || echo "ocamlc not found"
           
           echo "Dune version:"
           dune --version 2>&1 || echo "dune not found"
-          
-          echo "ocamloban version:"
-          ocamloban --version 2>&1 || echo "ocamloban not found"
       
-      - name: Install project dependencies with opam
+      - name: Install opam with OCaml 5.5
         run: |
-          eval $(opam env)
+          export PATH=/opt/bin:$PATH
+          eval $(opam init --desktop=false --disable-scope)
+          
           opam install . --deps-only
       
       - name: Build project with dune
@@ -54,7 +47,7 @@ jobs:
       
       - name: Format check with ocamlformat (optional)
         run: |
-          eval $(opam env)
+          export PATH=/opt/bin:$PATH
           
           if ! command -v ocamlformat &> /dev/null; then
             echo "⚠ ocamlformat not found, skipping formatting check"
@@ -71,7 +64,7 @@ jobs:
       
       - name: Type check with ocamloban (optional)
         run: |
-          eval $(opam env)
+          export PATH=/opt/bin:$PATH
           
           if ! command -v ocamloban &> /dev/null; then
             echo "⚠ ocamloban not found, skipping type check"
