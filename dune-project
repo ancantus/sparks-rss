@@ -31,6 +31,7 @@
   lwt_ssl
   zipc
   yojson
+  webdriver
   webdriver_cohttp-lwt-unix
   (xmlm :with-test)
   (ocamlformat (and :with-dev-setup (= 0.29.0))))
