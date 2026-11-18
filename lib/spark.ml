@@ -499,20 +499,21 @@ let make_comments_xhtml ~title comments =
   let header_style = "font-size: 0.75em; color: #555; margin: 1.2em 0 0.3em" in
   let comment_block comment =
     let head =
-      H.p ~a:[H.Unsafe.string_attrib "style" header_style]
+      H.p
+        ~a:[H.Unsafe.string_attrib "style" header_style]
         [ H.txt
-            (comment.Comments.author
+            ( comment.Comments.author
             ^ Option.fold ~none:""
                 ~some:(fun parent -> " @" ^ parent)
-                comment.Comments.reply_to)
+                comment.Comments.reply_to )
         ; H.txt
-            (if comment.Comments.age = "" then ""
-             else " · " ^ comment.Comments.age) ]
+            ( if comment.Comments.age = "" then ""
+              else " · " ^ comment.Comments.age ) ]
       |> fun element -> render_xhtml_elements [element]
     in
     let body =
-      Soup.parse comment.Comments.text |> Soup.coerce |> soup_to_xhtml
-      |> render_xhtml_elements
+      Soup.parse comment.Comments.text
+      |> Soup.coerce |> soup_to_xhtml |> render_xhtml_elements
     in
     "<div>" ^ head ^ body ^ "</div>"
   in
@@ -534,8 +535,9 @@ let make_comments_xhtml ~title comments =
         String.concat "" (interleave comments)
   in
   let comments_heading = render_xhtml_elements [H.h2 [H.txt "Comments:"]] in
-  make_article_xhtml_with_body ~body_content:(Some (comments_heading ^ body_content)) ~title ~summary:"" ~text:""
-    ~images:[]
+  make_article_xhtml_with_body
+    ~body_content:(Some (comments_heading ^ body_content))
+    ~title ~summary:"" ~text:"" ~images:[]
 
 let extract_article ~title ~summary ~url html =
   let soup = Soup.parse html in

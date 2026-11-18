@@ -14,31 +14,36 @@ let is_item_url uri =
   if not (is_lobsters_host (Uri.host uri)) then false
   else
     match String.split_on_char '/' (Uri.path uri) with
-    | [""; "s"; short_id] -> is_short_id short_id
-    | [""; "s"; short_id; slug] -> is_short_id short_id && slug <> ""
-    | _ -> false
+    | [""; "s"; short_id] ->
+        is_short_id short_id
+    | [""; "s"; short_id; slug] ->
+        is_short_id short_id && slug <> ""
+    | _ ->
+        false
 
 let text_of node = String.trim (String.concat "" (Soup.texts node))
 
 let parse_comment ~reply_to node =
   match
-    (Soup.select_one ".byline" node, Soup.select_one "time" node,
-     Soup.select_one ".comment_text" node)
+    ( Soup.select_one ".byline" node
+    , Soup.select_one "time" node
+    , Soup.select_one ".comment_text" node )
   with
   | Some byline, time, Some body ->
       let author =
         Soup.select "a" byline |> Soup.to_list
         |> List.find_map (fun link ->
-               match Soup.attribute "href" link with
-               | Some href when String.starts_with ~prefix:"/~" href ->
-                   let username = text_of link in
-                   if username = "" then None else Some username
-               | _ -> None )
+            match Soup.attribute "href" link with
+            | Some href when String.starts_with ~prefix:"/~" href ->
+                let username = text_of link in
+                if username = "" then None else Some username
+            | _ ->
+                None )
       in
       Option.map
         (fun author ->
           let age = Option.fold ~none:"" ~some:text_of time in
-          {Comments.author= author; reply_to; age; text= Soup.to_string body} )
+          {Comments.author; reply_to; age; text= Soup.to_string body} )
         author
   | _ ->
       None
@@ -47,9 +52,11 @@ let parse_comments html =
   let comment_nodes =
     Soup.parse html |> Soup.select "div" |> Soup.to_list
     |> List.filter (fun node ->
-           match Soup.attribute "id" node with
-           | Some id -> String.starts_with ~prefix:"c_" id
-           | None -> false )
+        match Soup.attribute "id" node with
+        | Some id ->
+            String.starts_with ~prefix:"c_" id
+        | None ->
+            false )
   in
   let author_by_id = Hashtbl.create (List.length comment_nodes) in
   let comment_id node =
