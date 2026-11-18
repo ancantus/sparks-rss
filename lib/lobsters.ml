@@ -28,11 +28,12 @@ let parse_comment ~reply_to node =
   | Some byline, time, Some body ->
       let author =
         Soup.select "a" byline |> Soup.to_list
-        |> List.find_opt (fun link ->
+        |> List.find_map (fun link ->
                match Soup.attribute "href" link with
-               | Some href -> String.starts_with ~prefix:"/~" href
-               | None -> false )
-        |> Option.map text_of
+               | Some href when String.starts_with ~prefix:"/~" href ->
+                   let username = text_of link in
+                   if username = "" then None else Some username
+               | _ -> None )
       in
       Option.map
         (fun author ->
@@ -60,10 +61,13 @@ let parse_comments html =
     | None ->
         None
     | Some parent -> (
-      match comment_id parent with
-      | Some id ->
-          Some id
-      | None ->
+      match (Soup.name parent, Soup.attribute "class" parent) with
+      | "ol", Some classes
+        when List.mem "comments" (String.split_on_char ' ' classes) ->
+          Option.bind (Soup.parent parent) (fun subtree ->
+              Soup.children subtree |> Soup.elements |> Soup.to_list
+              |> List.find_map comment_id )
+      | _ ->
           parent_id parent )
   in
   List.fold_left

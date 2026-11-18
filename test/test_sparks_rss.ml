@@ -146,6 +146,19 @@ let test_hackernews_comments () =
   | _ ->
       failwith "Expected two parsed Hacker News comments"
 
+let test_lobsters_comment_author () =
+  let html =
+    {|<ol class="comments"><li class="comments_subtree"><div id="c_parent" class="comment"><div class="details"><div class="byline"><a href="/~alice" aria-hidden="true"><img src="/avatar.png" alt=""></a><a href="/~alice">alice</a><time>yesterday</time></div><div class="comment_text"><p>Parent comment</p></div></div></div><ol class="comments"><li class="comments_subtree"><div id="c_reply" class="comment"><div class="details"><div class="byline"><a href="/~bob" aria-hidden="true"><img src="/avatar.png" alt=""></a><a href="/~bob">bob</a><time>today</time></div><div class="comment_text"><p>Reply</p></div></div></div></li></ol></li></ol>|}
+  in
+  match Sparks_rss.Lobsters.parse_comments html with
+  | [parent; reply] ->
+      check (parent.author = "alice") "Lobsters author should use username link text" ;
+      check
+        (reply.author = "bob" && reply.reply_to = Some "alice")
+        "Lobsters replies should parse their author and direct parent"
+  | _ ->
+      failwith "Expected parent and reply Lobsters comments"
+
 let test_comments_xhtml () =
   let comments =
     [ { Sparks_rss.Comments.author= "a & b"
@@ -276,6 +289,7 @@ let () =
   test_rss_parser () ;
   test_hackernews_item_urls () ;
   test_hackernews_comments () ;
+  test_lobsters_comment_author () ;
   test_image_handling () ;
   test_article_xhtml () ;
   test_soup_sanitization () ;
