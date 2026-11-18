@@ -7,9 +7,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: ocaml/setup-ocaml@v3
+      - uses: ocaml/setup-ocaml@v4
         with:
-          ocaml-compiler: '5.5'
+          opam-repos-url: 'https://github.com/ocaml/opam-repos.git'
       - run: opam install . --deps-only
       - run: opam exec -- dune build
       - run: opam exec -- dune runtest
