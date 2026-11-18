@@ -6,6 +6,10 @@ on:
   pull_request:
     branches: [main]
 
+env:
+  OPAM_ENV: ""
+  PATH: /opt/bin:$PATH
+
 jobs:
   build:
     name: Build Check
@@ -15,12 +19,13 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
       
-      - name: Setup OCaml with Dune
-        uses: ocaml/setup-ocaml@v3
-        with:
-          opam-repositories: 'https://github.com/ocaml/opam-repos.git'
-          allow-prerelease-opam: 'yes'
-          cache: 'yes'
+      - name: Setup OCaml via opam install
+        run: |
+          echo "Installing opam..."
+          curl https://raw.githubusercontent.com/ocaml/opam/master/install.sh -sSf | sh -s -- --bare
+          
+          eval $(opam env)
+          opam install ocaml dune ocamlp ocamlformat ocamloban
 
       - name: Install project dependencies with opam
         run: |
