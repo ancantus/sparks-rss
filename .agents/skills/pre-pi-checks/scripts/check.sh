@@ -7,8 +7,7 @@ cd "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$(git rev-parse --show-toplevel)"
 
 if ! opam switch list --short | grep -qx "$SWITCH"; then
-  printf "opam switch '%s' not found.\nCreate it with: opam switch create %s 5.5.0\n" \
-    "$SWITCH" "$SWITCH" >&2
+  printf "opam switch '%s' not found. Ask the user to set it up.\n" "$SWITCH" >&2
   exit 1
 fi
 
@@ -31,5 +30,12 @@ dune build @fmt || failed "dune build @fmt (run 'dune build @fmt --auto-promote'
 
 printf '\n==> opam lint sparks_rss.opam\n'
 opam lint sparks_rss.opam || failed "opam lint sparks_rss.opam"
+
+printf '\n==> tools/generate-sparks-rss-quick.sh\n'
+rm -f quick-test.epub
+tools/generate-sparks-rss-quick.sh || failed "tools/generate-sparks-rss-quick.sh"
+if [ ! -s quick-test.epub ]; then
+  failed "tools/generate-sparks-rss-quick.sh did not create quick-test.epub"
+fi
 
 printf '\nAll pre-pi checks passed.\n'
