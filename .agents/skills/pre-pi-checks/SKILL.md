@@ -5,9 +5,9 @@ description: Run every CI check for sparks-rss locally (build, dune runtest, dun
 
 # Pre-Pi Checks
 
-Run the same gate as `.github/workflows/ci.yml` before handing work off or
-pushing. Every step must exit 0; a formatting diff or lint warning is a
-failure, not a warning.
+Run the same gate as `.github/workflows/ci.yml`, plus an end-to-end EPUB smoke
+test, before handing work off or pushing. Every step must exit 0; a formatting
+diff or lint warning is a failure, not a warning.
 
 ## Run everything
 
@@ -17,7 +17,8 @@ failure, not a warning.
 
 The script changes to the repository root, activates the `ocaml55` switch, sets
 `PKG_CONFIG_PATH` for the user-local libcurl headers, then runs each check in
-order. It stops at the first failure and prints the failing command.
+order, ending with the local EPUB generation script. It stops at the first
+failure and prints the failing command.
 
 ## The checks
 
@@ -31,6 +32,7 @@ dune build            # compile everything
 dune runtest          # unit tests + EPUBCheck integration test
 dune build @fmt       # ocamlformat / dune-file formatting check
 opam lint sparks_rss.opam
+tools/generate-sparks-rss-quick.sh   # generate a real EPUB as a smoke test
 ```
 
 ### What each one covers
@@ -41,6 +43,7 @@ opam lint sparks_rss.opam
 | `dune runtest`        | Test failures in `test/test_sparks_rss.ml` and `test/test_epubcheck.ml` |
 | `dune build @fmt`     | Unformatted OCaml or `dune` files (prints a diff and exits non-zero) |
 | `opam lint`           | Invalid or missing fields in `sparks_rss.opam`        |
+| `generate-sparks-rss-quick.sh` | End-to-end CLI failure; the script also checks that `quick-test.epub` was created and is non-empty |
 
 ### Tests and EPUBCheck
 

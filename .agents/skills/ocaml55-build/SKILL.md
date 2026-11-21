@@ -55,10 +55,8 @@ which dune ocamlformat
 - Do not run two `dune` commands in parallel in the same checkout. They share
   `_build` and its RPC server, and a concurrent invocation can fail with
   `Build requests require a watch-mode server`. Run them one after another.
-- If the switch is missing, create it once with
-  `opam switch create ocaml55 5.5.0`, then install dependencies:
-  `opam install . --deps-only --with-test --with-doc -y`. The `webdriver`
-  packages are pinned from git; see the README toolchain section.
+- If the switch or dependencies are missing, stop and ask the user to set
+  them up. Do not create switches or install packages automatically.
 - Running the CLI (`dune exec sparks_rss -- ...`) also needs Firefox and
   `geckodriver` on `PATH`. Building and testing do not.
 - Use the `pre-pi-checks` skill to run the full CI gate after building.
