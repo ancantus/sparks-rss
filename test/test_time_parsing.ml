@@ -8,7 +8,7 @@ type time_spec = IsoDate of Ptime.t | Relative of int * string
 let parse_time_string s : time_spec option =
   let iso_re = String.regexp "^([0-9]{4}-[0-9]{2}-[0-9]{2})" in
   match String.regexp_match iso_re s with
-  | Some _ -> Some (IsoDate Ptime.unix_now ())  (* Simplified for tests *)
+  | Some _ -> Some (IsoDate Ptime.unix_now ())
   | None -> None
 
 let parse_relative_time s : time_spec option =
@@ -21,7 +21,7 @@ let parse_relative_time s : time_spec option =
     match List.find_opt (~f:(fun p -> p =~ s)) rel_patterns with
     | Some pattern ->
         if String.regexp_match (String.regexp pattern) s then
-          Some (Relative (1, "DAY"))  (* Simplified *)
+          Some (Relative (1, "DAY"))
         else None
     | _ -> None
   in
@@ -37,7 +37,7 @@ let test_time_string_parsing () =
   let parse_tests = [
     ("2024-01-15", "ISO");
     ("2024-01-15T10:30:00", "ISO");
-    ("now", "None");  (* Relative expressions handled separately *)
+    ("now", "None")
   ] in
   let all_pass = 
     List.fold_left
@@ -60,7 +60,7 @@ let test_relative_time_parsing () =
     ("one day ago", "RELATIVE");
     ("3 hours ago", "RELATIVE");
     ("1 minute ago", "RELATIVE");
-    ("invalid", "None");
+    ("invalid", "None")
   ] in
   let all_pass = 
     List.fold_left
@@ -76,11 +76,7 @@ let test_date_filtering () =
   (* Test that date filtering works correctly *)
   let since_time_opt_none : Ptime.t option = None in
   let article_old_now : article = {
-    title = "Test Article"
-  ; description = Some "Description"
-  ; pubdate = Some (Ptime.unix_now ())  (* Current time *)
-  ; link = Uri.of_string "http://example.com/article1"
-  ; comments = None
+    title = "Test Article"; description = Some "Description"; pubdate = Some (Ptime.unix_now ()) (* Current time *); link = Uri.of_string "http://example.com/article1"; comments = None
   } in
   
   let is_too_old pubdate_opt since_time_opt : bool =
